@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v31", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v32", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -386,6 +386,7 @@ var label lbSmt    = na
 var line  lnCisd   = na
 var box   bxFvg    = na
 var label lbFvg    = na
+var int   bxT0     = na
 var int   bxArm    = na
 
 
@@ -1124,15 +1125,17 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
             pT2    := t2
             pT3    := t3
             if showDraw
-                string fTxt = "FVG נבחר · לימיט " + str.tostring(lvl, format.mintick) + " · " + str.tostring(qty) + " חוזים"
+                // התיבה מתחילה ברגע שהלימיט נשלח (לא בזמן שה-FVG נוצר) — נגיעה לפני התיבה = הפקודה עוד לא הייתה בשוק
+                string fTxt = "לימיט " + str.tostring(lvl, format.mintick) + " · " + str.tostring(qty) + " חוזים · FVG מ-" + str.format_time(fT, "HH:mm", tz)
                 if na(bxFvg) or bxArm != stArmT
-                    bxFvg := box.new(left = fT, top = fTop, right = time, bottom = fBot, xloc = xloc.bar_time, bgcolor = color.new(color.orange, 80), border_color = color.new(color.orange, 40))
-                    lbFvg := label.new(x = fT, y = stDir == -1 ? fTop : fBot, text = fTxt, xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_lower_left : label.style_label_upper_left, color = color.new(color.orange, 30), textcolor = color.black, size = size.tiny)
+                    bxT0  := time
+                    bxFvg := box.new(left = bxT0, top = fTop, right = time, bottom = fBot, xloc = xloc.bar_time, bgcolor = color.new(color.orange, 80), border_color = color.new(color.orange, 40))
+                    lbFvg := label.new(x = bxT0, y = stDir == -1 ? fTop : fBot, text = fTxt, xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_lower_left : label.style_label_upper_left, color = color.new(color.orange, 30), textcolor = color.black, size = size.tiny)
                     bxArm := stArmT
                 else
-                    box.set_lefttop(bxFvg, fT, fTop)
+                    box.set_lefttop(bxFvg, bxT0, fTop)
                     box.set_rightbottom(bxFvg, time, fBot)
-                    label.set_xy(lbFvg, fT, stDir == -1 ? fTop : fBot)
+                    label.set_xy(lbFvg, bxT0, stDir == -1 ? fTop : fBot)
                     label.set_text(lbFvg, fTxt)
             if na(alertedLvl) or lvl != alertedLvl
                 alert(str.format("{0} LIMIT @ {1} | SL {2} | TP {3} | Qty {4}", stDir == 1 ? "LONG" : "SHORT", str.tostring(lvl, format.mintick), str.tostring(sl, format.mintick), str.tostring(lastT, format.mintick), qty), alert.freq_once_per_bar_close)
@@ -1184,4 +1187,4 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
-    f_row(tbl, 20, "גרסת קוד", "v31", color.yellow)
+    f_row(tbl, 20, "גרסת קוד", "v32", color.yellow)
