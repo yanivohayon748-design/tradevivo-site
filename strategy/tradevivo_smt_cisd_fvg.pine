@@ -21,7 +21,8 @@ string ENG_LUX    = "LuxAlgo (פיבוט בשני הנכסים)"
 string ENG_WIN    = "חלון (גמיש)"
 string SMT_BOTH   = "שני הכיוונים"
 string SMT_WEAK   = "רק הנכס שלי חלש"
-string CISD_BODY  = "סגירת גוף"
+string CISD_1M    = "סגירת נר דקה"
+string CISD_BODY  = "סגירת נר 5 דק'"
 string CISD_WICK  = "פתיל"
 string PICK_NEAR  = "הקרוב למחיר"
 string PICK_SWING = "העליון ביותר (הקרוב לשיא/שפל)"
@@ -59,12 +60,13 @@ cmp1     = input.symbol("CME_MINI:MES1!", "נכס השוואה 1", inline = "c1"
 cmp2On   = input.bool(false, "", inline = "c2", group = G2)
 cmp2     = input.symbol("CME_MINI:MNQ1!", "נכס השוואה 2", inline = "c2", group = G2)
 pivL     = input.int(6, "Pivot — נרות משמאל", minval = 1, group = G2)
-pivR     = input.int(6, "Pivot — נרות מימין", minval = 1, group = G2, tooltip = "כמה נרות מימין צריכים לאשר את השיא/שפל. מספר גבוה = פחות רעש אבל אישור מאוחר יותר. ב-LuxAlgo, Pivot Lookback = שני הערכים.")
+pivR     = input.int(2, "Pivot — נרות מימין (אישור)", minval = 1, group = G2, tooltip = "כמה נרות 5 דק' אחרי השיא צריך כדי לאשר אותו. LuxAlgo מצייר את ה-SMT אחורה על השיא, אבל בזמן אמת הוא יודע עליו רק אחרי הנרות האלה: 6 = חצי שעה אחרי השיא, 2 = 10 דקות. מספר קטן = SMT מוקדם יותר (ויותר רעש).")
 smtEngine = input.string(ENG_LUX, "שיטת זיהוי SMT", options = [ENG_LUX, ENG_WIN], group = G2, tooltip = "LuxAlgo: זהה לאינדיקטור SMT Divergences — SMT רק כששני הנכסים עשו פיבוט באותו נר.\nחלון: משווה לשיא/שפל של נכס ההשוואה בחלון הפיבוט — מזהה יותר SMT-ים, גם כשבנכס ההשוואה אין פיבוט מלא.")
 maxDist  = input.int(100, "מרחק מקס' בין שני השיאים (נרות)", minval = 3, group = G2, tooltip = "ב-LuxAlgo אין מגבלה. מספר נמוך יותר = רק SMT-ים בין שיאים קרובים.")
 smtMode  = input.string(SMT_BOTH, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], group = G2, tooltip = "שני הכיוונים: כל אחד מהנכסים יכול להיות זה שנכשל.\nרק הנכס שלי חלש: בשורט — הנכס שלי עשה שיא נמוך יותר וההשוואה שיא גבוה יותר (ולהפך בלונג).")
 
-cisdMode = input.string(CISD_BODY, "שבירת CISD לפי", options = [CISD_BODY, CISD_WICK], group = G3)
+cisdMode = input.string(CISD_1M, "שבירת CISD לפי", options = [CISD_1M, CISD_BODY, CISD_WICK], group = G3, tooltip = "סגירת נר דקה: מספיק שנר דקה נסגר מעבר לקו.\nסגירת נר 5 דק': צריך נר 5 דקות שנסגר מעבר לקו.\nפתיל: מספיק שהמחיר נגע מעבר לקו.")
+needCisd = input.bool(true, "חובה לחכות ל-CISD לפני הכניסה", group = G3, tooltip = "כבוי: האסטרטגיה שמה לימיט ב-FVG מיד אחרי ה-SMT, בלי לחכות לשבירת ה-CISD.")
 cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
 
 fvgPick   = input.string(PICK_MID, "איזה FVG", options = [PICK_MID, PICK_SWING, PICK_NEAR, PICK_BIG], group = G4, tooltip = "מבין ה-FVG-ים שנוצרו בתנועה מהשיא (בשורט) או מהשפל (בלונג):\nהאמצעי: עם 3 FVG-ים בוחר את האמצעי, עם 2 את העליון (בשורט).\nהעליון ביותר: הכי קרוב לשיא/שפל של ה-SMT.\nהקרוב למחיר: הראשון שהמחיר יגיע אליו.")
@@ -636,6 +638,16 @@ f_swingBarTime(float price, int t0, int t1, bool isHigh) =>
             res := bt
     res
 
+// הסגירה הקיצונית של נרות הדקה מאז זמן t0 (לבדיקת CISD בסגירת נר דקה)
+f_extClose(int t0, bool wantMin) =>
+    float r = na
+    for i = 0 to 1500
+        int bt = time[i]
+        if na(bt) or bt < t0
+            break
+        r := na(r) ? close[i] : wantMin ? math.min(r, close[i]) : math.max(r, close[i])
+    r
+
 // סוף חלון ה-FVG: X נרות אחרי נר ה-SMT
 f_winEnd(float price, int swingT, bool isHigh) =>
     int r = na
@@ -666,10 +678,14 @@ if bearSMT and allowShort and isFlat
     stArmT   := time
     stExt    := mMinL
     stWinEnd := f_winEnd(mPH, mPT, true)
-    if (cisdMode == CISD_BODY ? mMinC : mMinL) < stCisd
+    float chkB = cisdMode == CISD_1M ? f_extClose(mPT, true) : cisdMode == CISD_BODY ? mMinC : mMinL
+    if chkB < stCisd
         stStage := 2
         stCisdT := time
         nCisd   += 1
+    else if not needCisd
+        stStage := 2
+        stCisdT := time
     if showDraw
         line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.red, width = 2)
         label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
@@ -691,10 +707,14 @@ if bullSMT and allowLong and isFlat
     stArmT   := time
     stExt    := mMaxH
     stWinEnd := f_winEnd(mPL, mPT, false)
-    if (cisdMode == CISD_BODY ? mMaxC : mMaxH) > stCisd
+    float chkU = cisdMode == CISD_1M ? f_extClose(mPT, false) : cisdMode == CISD_BODY ? mMaxC : mMaxH
+    if chkU > stCisd
         stStage := 2
         stCisdT := time
         nCisd   += 1
+    else if not needCisd
+        stStage := 2
+        stCisdT := time
     if showDraw
         line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.lime, width = 2)
         label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
@@ -721,8 +741,9 @@ if stStage > 0 and isFlat
         stStage := 0
         stDir   := 0
     else if stStage == 1
-        if newHtf and time != stArmT
-            float c = cisdMode == CISD_BODY ? mC : stDir == -1 ? mL : mH
+        bool chkNow = cisdMode == CISD_1M ? time != stArmT : newHtf and time != stArmT
+        if chkNow
+            float c = cisdMode == CISD_1M ? close : cisdMode == CISD_BODY ? mC : stDir == -1 ? mL : mH
             bool broke = stDir == -1 ? c < stCisd : c > stCisd
             if broke
                 stStage := 2
