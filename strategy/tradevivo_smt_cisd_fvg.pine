@@ -101,25 +101,25 @@ be3On = input.bool(false, "שלב 3", inline = "be3", group = G7)
 be3At = input.float(3.0, "כשמגיעים ל-R", step = 0.1, inline = "be3", group = G7)
 be3To = input.float(2.0, "סטופ ל-R", step = 0.1, inline = "be3", group = G7)
 
-maxSess  = input.int(2, "מקס' עסקאות לסשן", minval = 1, group = G8)
-maxDay   = input.int(3, "מקס' עסקאות ליום", minval = 1, group = G8)
-maxWeek  = input.int(10, "מקס' עסקאות לשבוע", minval = 1, group = G8)
-maxMonth = input.int(30, "מקס' עסקאות לחודש", minval = 1, group = G8)
-maxLoss  = input.float(500, "מקס' הפסד יומי ($)  0 = ללא", minval = 0, group = G8)
-maxProf  = input.float(1000, "מקס' רווח יומי ($)  0 = ללא", minval = 0, group = G8)
+maxSess  = input.int(20, "מקס' עסקאות לסשן", minval = 1, group = G8)
+maxDay   = input.int(20, "מקס' עסקאות ליום", minval = 1, group = G8)
+maxWeek  = input.int(100, "מקס' עסקאות לשבוע", minval = 1, group = G8)
+maxMonth = input.int(400, "מקס' עסקאות לחודש", minval = 1, group = G8)
+maxLoss  = input.float(0, "מקס' הפסד יומי ($)  0 = ללא", minval = 0, group = G8)
+maxProf  = input.float(0, "מקס' רווח יומי ($)  0 = ללא", minval = 0, group = G8)
 closeLim = input.bool(true, "סגור פוזיציה פתוחה כשמגיעים למגבלה היומית", group = G8)
 
-tz   = input.string("America/New_York", "אזור זמן", group = G9)
-s1On = input.bool(true,  "סשן 1", inline = "s1", group = G9)
-s1   = input.session("0930-1130", "", inline = "s1", group = G9)
-s2On = input.bool(false, "סשן 2", inline = "s2", group = G9)
-s2   = input.session("1130-1330", "", inline = "s2", group = G9)
-s3On = input.bool(false, "סשן 3", inline = "s3", group = G9)
-s3   = input.session("1330-1600", "", inline = "s3", group = G9)
-s4On = input.bool(false, "סשן 4", inline = "s4", group = G9)
-s4   = input.session("0300-0600", "", inline = "s4", group = G9)
-s5On = input.bool(false, "סשן 5", inline = "s5", group = G9)
-s5   = input.session("2000-2359", "", inline = "s5", group = G9)
+tz   = input.string("Asia/Jerusalem", "אזור זמן (שעון ישראל)", group = G9, tooltip = "כל שעות הסשנים לפי אזור הזמן הזה. Asia/Jerusalem = שעון ישראל, America/New_York = שעון ניו יורק.")
+s1On = input.bool(true,  "סשן 1 · כל היום", inline = "s1", group = G9)
+s1   = input.session("0130-2300", "", inline = "s1", group = G9)
+s2On = input.bool(false, "סשן 2 · אסיה", inline = "s2", group = G9)
+s2   = input.session("0130-0900", "", inline = "s2", group = G9)
+s3On = input.bool(false, "סשן 3 · לונדון", inline = "s3", group = G9)
+s3   = input.session("0900-1530", "", inline = "s3", group = G9)
+s4On = input.bool(false, "סשן 4 · ניו יורק בוקר", inline = "s4", group = G9)
+s4   = input.session("1630-1830", "", inline = "s4", group = G9)
+s5On = input.bool(false, "סשן 5 · ניו יורק צהריים", inline = "s5", group = G9)
+s5   = input.session("1830-2300", "", inline = "s5", group = G9)
 flatEnd = input.bool(false, "סגור פוזיציה בסוף הסשן", group = G9)
 
 showDraw = input.bool(true, "הצג SMT / CISD / FVG על הגרף", group = G10)
@@ -510,6 +510,7 @@ var float stExt    = na
 var int   stWinEnd = na
 var line  lnCisd   = na
 var box   bxFvg    = na
+var label lbFvg    = na
 var int   bxArm    = na
 
 // פקודה ממתינה
@@ -820,12 +821,16 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
             pT2    := t2
             pT3    := t3
             if showDraw
+                string fTxt = "FVG נבחר · לימיט " + str.tostring(lvl, format.mintick) + " · " + str.tostring(qty) + " חוזים"
                 if na(bxFvg) or bxArm != stArmT
                     bxFvg := box.new(left = fT, top = fTop, right = time, bottom = fBot, xloc = xloc.bar_time, bgcolor = color.new(color.orange, 80), border_color = color.new(color.orange, 40))
+                    lbFvg := label.new(x = fT, y = stDir == -1 ? fTop : fBot, text = fTxt, xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_lower_left : label.style_label_upper_left, color = color.new(color.orange, 30), textcolor = color.black, size = size.tiny)
                     bxArm := stArmT
                 else
                     box.set_lefttop(bxFvg, fT, fTop)
                     box.set_rightbottom(bxFvg, time, fBot)
+                    label.set_xy(lbFvg, fT, stDir == -1 ? fTop : fBot)
+                    label.set_text(lbFvg, fTxt)
             if na(alertedLvl) or lvl != alertedLvl
                 alert(str.format("{0} LIMIT @ {1} | SL {2} | TP {3} | Qty {4}", stDir == 1 ? "LONG" : "SHORT", str.tostring(lvl, format.mintick), str.tostring(sl, format.mintick), str.tostring(lastT, format.mintick), qty), alert.freq_once_per_bar_close)
                 alertedLvl := lvl
