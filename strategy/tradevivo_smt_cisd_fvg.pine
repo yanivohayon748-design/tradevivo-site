@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v32", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v33", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -71,7 +71,7 @@ maxDist  = input.int(100, "מרחק מקס' בין שני השיאים (נרות
 smtMode  = input.string(SMT_BOTH, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], group = G2, tooltip = "שני הכיוונים: כל אחד מהנכסים יכול להיות זה שנכשל (מומלץ).\nרק הנכס שלי לא שובר: בשורט — MNQ לא עבר את השיא ו-MES כן. בלונג — MNQ לא שבר את השפל ו-MES כן. כש-NQ חלש מ-ES זה כמעט לא נותן לונגים.")
 
 cisdMode = input.string(CISD_BODY, "שבירת CISD לפי", options = [CISD_1M, CISD_BODY, CISD_WICK], group = G3, tooltip = "סגירת נר דקה: מספיק שנר דקה נסגר מעבר לקו.\nסגירת נר 5 דק': צריך נר 5 דקות שנסגר מעבר לקו.\nפתיל: מספיק שהמחיר נגע מעבר לקו.")
-cisdDef  = input.string(CDEF_LOW, "רמת ה-CISD", options = [CDEF_LOW, CDEF_ICT], group = G3, tooltip = "השפל/שיא בין שני הקיצונים: בשורט — השפל הנמוך ביותר בין השיא הקודם לשיא ה-SMT.\nICT: בשורט — הפתיחה של הנר הראשון ברצף הנרות העולים שהוביל לשיא ה-SMT (בלונג — רצף הנרות היורדים שהוביל לשפל). בדרך כלל קרוב יותר לקיצון, ולכן נשבר מוקדם יותר.\nעובד עם מנוע ה-SMT החי.")
+cisdDef  = input.string(CDEF_ICT, "רמת ה-CISD", options = [CDEF_LOW, CDEF_ICT], group = G3, tooltip = "השפל/שיא בין שני הקיצונים: בשורט — השפל הנמוך ביותר בין השיא הקודם לשיא ה-SMT.\nICT: בשורט — הפתיחה של הנר הראשון ברצף הנרות העולים שהוביל לשיא ה-SMT (בלונג — רצף הנרות היורדים שהוביל לשפל). בדרך כלל קרוב יותר לקיצון, ולכן נשבר מוקדם יותר.\nעובד עם מנוע ה-SMT החי.")
 needCisd = input.bool(true, "חובה לחכות ל-CISD לפני הכניסה", group = G3, tooltip = "כבוי: האסטרטגיה שמה לימיט ב-FVG מיד אחרי ה-SMT, בלי לחכות לשבירת ה-CISD.")
 cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
 
@@ -1187,4 +1187,4 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
-    f_row(tbl, 20, "גרסת קוד", "v32", color.yellow)
+    f_row(tbl, 20, "גרסת קוד", "v33", color.yellow)
