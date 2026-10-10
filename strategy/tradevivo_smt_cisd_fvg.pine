@@ -23,8 +23,9 @@ string SMT_WEAK   = "רק הנכס שלי חלש"
 string CISD_BODY  = "סגירת גוף"
 string CISD_WICK  = "פתיל"
 string PICK_NEAR  = "הקרוב למחיר"
-string PICK_SWING = "הקרוב לשיא/שפל"
+string PICK_SWING = "העליון ביותר (הקרוב לשיא/שפל)"
 string PICK_BIG   = "הגדול ביותר"
+string PICK_MID   = "האמצעי"
 string EDGE_NEAR  = "קצה קרוב"
 string EDGE_MID   = "אמצע (50%)"
 string EDGE_FAR   = "קצה רחוק"
@@ -57,7 +58,7 @@ smtMode  = input.string(SMT_BOTH, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], 
 cisdMode = input.string(CISD_BODY, "שבירת CISD לפי", options = [CISD_BODY, CISD_WICK], group = G3)
 cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
 
-fvgPick   = input.string(PICK_NEAR, "איזה FVG", options = [PICK_NEAR, PICK_SWING, PICK_BIG], group = G4)
+fvgPick   = input.string(PICK_MID, "איזה FVG", options = [PICK_MID, PICK_SWING, PICK_NEAR, PICK_BIG], group = G4, tooltip = "מבין ה-FVG-ים שנוצרו בתנועה מהשיא (בשורט) או מהשפל (בלונג):\nהאמצעי: עם 3 FVG-ים בוחר את האמצעי, עם 2 את העליון (בשורט).\nהעליון ביותר: הכי קרוב לשיא/שפל של ה-SMT.\nהקרוב למחיר: הראשון שהמחיר יגיע אליו.")
 fvgEdge   = input.string(EDGE_NEAR, "נקודת כניסה ב-FVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G4)
 fvgMinT   = input.int(2, "גודל FVG מינ' (טיקים)", minval = 1, group = G4)
 mitType   = input.string("Close", "Mitigation Type", options = ["Close", "Wick"], inline = "mit", group = G4)
@@ -374,12 +375,16 @@ if array.size(uTop) > 0
             array.remove(uT, i)
 
 float minGap = fvgMinT * syminfo.mintick
+bool newBearF = false
+bool newBullF = false
 if bar_index >= 2
     if high < low[2] and low[2] - high >= minGap
+        newBearF := true
         array.push(bTop, low[2])
         array.push(bBot, high)
         array.push(bT, time[1])
     if low > high[2] and low - high[2] >= minGap
+        newBullF := true
         array.push(uTop, low)
         array.push(uBot, high[2])
         array.push(uT, time[1])
@@ -392,34 +397,63 @@ if array.size(uTop) > 300
     array.shift(uBot)
     array.shift(uT)
 
-// בחירת FVG לכניסה מבין אלה שנוצרו אחרי שיא/שפל ה-SMT
-f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing, int swingT, float ext) =>
-    float bestLvl   = na
-    float bestTop   = na
-    float bestBot   = na
-    int   bestT     = na
-    float bestScore = na
-    float eq = (swing + ext) / 2
+// נקודת הכניסה בתוך FVG לפי ההגדרה
+f_lvl(int dir, float t, float b) =>
+    float nearE = dir == -1 ? b : t
+    float farE  = dir == -1 ? t : b
+    fvgEdge == EDGE_NEAR ? nearE : fvgEdge == EDGE_FAR ? farE : (t + b) / 2
+
+// בחירת FVG לכניסה מבין אלה שנוצרו אחרי שיא/שפל ה-SMT.
+// הבחירה ננעלת: היא מתעדכנת רק כשנוצר FVG חדש בתנועה (או כשה-FVG הנבחר נפסל),
+// ולא זזה כשהמחיר חוזר ופוסל את ה-FVG-ים הקרובים אליו.
+f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing, int swingT, float ext, int lockedT, bool repick) =>
     int n = array.size(tops)
-    if n > 0
+    int bestI = na
+    if not repick and not na(lockedT) and n > 0
         for i = 0 to n - 1
-            float t  = array.get(tops, i)
-            float b  = array.get(bots, i)
-            int   ft = array.get(ts, i)
-            float nearE = dir == -1 ? b : t
-            float farE  = dir == -1 ? t : b
-            float lvl   = fvgEdge == EDGE_NEAR ? nearE : fvgEdge == EDGE_FAR ? farE : (t + b) / 2
-            bool inLeg = ft >= swingT and (dir == -1 ? t <= swing : b >= swing)
+            if array.get(ts, i) == lockedT
+                float lv = f_lvl(dir, array.get(tops, i), array.get(bots, i))
+                if dir == -1 ? lv > close : lv < close
+                    bestI := i
+                break
+    if na(bestI) and n > 0
+        float eq = (swing + ext) / 2
+        array<int>   idx  = array.new<int>()
+        array<float> keys = array.new<float>()
+        for i = 0 to n - 1
+            float t   = array.get(tops, i)
+            float b   = array.get(bots, i)
+            float lvl = f_lvl(dir, t, b)
+            bool inLeg = array.get(ts, i) >= swingT and (dir == -1 ? t <= swing : b >= swing)
             bool ahead = dir == -1 ? lvl > close : lvl < close
             bool pdOk  = not usePD or (dir == -1 ? lvl >= eq : lvl <= eq)
             if inLeg and ahead and pdOk
-                float score = fvgPick == PICK_NEAR ? (dir == -1 ? -nearE : nearE) : fvgPick == PICK_SWING ? (dir == -1 ? farE : -farE) : t - b
-                if na(bestScore) or score > bestScore
-                    bestScore := score
-                    bestLvl   := lvl
-                    bestTop   := t
-                    bestBot   := b
-                    bestT     := ft
+                array.push(idx, i)
+                // מפתח מיון: הגבוה ביותר = הקרוב ביותר לשיא (בשורט), הנמוך ביותר = הקרוב לשפל (בלונג)
+                array.push(keys, dir == -1 ? t : -b)
+        int m = array.size(idx)
+        if m > 0
+            if fvgPick == PICK_BIG
+                float big = na
+                for j = 0 to m - 1
+                    int   ii = array.get(idx, j)
+                    float sz = array.get(tops, ii) - array.get(bots, ii)
+                    if na(big) or sz > big
+                        big   := sz
+                        bestI := ii
+            else
+                array<int> ord = array.sort_indices(keys, order.descending)
+                int k = fvgPick == PICK_SWING ? 0 : fvgPick == PICK_NEAR ? m - 1 : math.floor((m - 1) / 2)
+                bestI := array.get(idx, array.get(ord, k))
+    float bestLvl = na
+    float bestTop = na
+    float bestBot = na
+    int   bestT   = na
+    if not na(bestI)
+        bestTop := array.get(tops, bestI)
+        bestBot := array.get(bots, bestI)
+        bestT   := array.get(ts, bestI)
+        bestLvl := f_lvl(dir, bestTop, bestBot)
     [bestLvl, bestTop, bestBot, bestT]
 
 // ───────────── פקודות ─────────────
@@ -638,24 +672,30 @@ if stStage > 0 and isFlat
 bool canTrade = tfOk and sessIdx > 0 and not dayLock and cSess < maxSess and cDay < maxDay and cWeek < maxWeek and cMonth < maxMonth
 bool placed   = false
 var float alertedLvl = na
+var int   lockT      = na
+var int   lockArm    = na
 
 if strategy.position_size == 0 and stStage == 2 and canTrade
+    if na(lockArm) or lockArm != stArmT
+        lockT   := na
+        lockArm := stArmT
     float lvl  = na
     float fTop = na
     float fBot = na
     int   fT   = na
     if stDir == -1
-        [aL, aT, aB, aX] = f_pick(-1, bTop, bBot, bT, stSwing, stSwingT, stExt)
+        [aL, aT, aB, aX] = f_pick(-1, bTop, bBot, bT, stSwing, stSwingT, stExt, lockT, newBearF)
         lvl  := aL
         fTop := aT
         fBot := aB
         fT   := aX
     else
-        [aL, aT, aB, aX] = f_pick(1, uTop, uBot, uT, stSwing, stSwingT, stExt)
+        [aL, aT, aB, aX] = f_pick(1, uTop, uBot, uT, stSwing, stSwingT, stExt, lockT, newBullF)
         lvl  := aL
         fTop := aT
         fBot := aB
         fT   := aX
+    lockT := fT
     if not na(lvl)
         float sl    = stSwing - stDir * slBuf * syminfo.mintick
         float risk  = math.abs(lvl - sl)
