@@ -16,6 +16,8 @@ strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT-CISD-FVG", overla
 string DIR_BOTH   = "לונג ושורט"
 string DIR_LONG   = "לונג בלבד"
 string DIR_SHORT  = "שורט בלבד"
+string ENG_LUX    = "LuxAlgo (פיבוט בשני הנכסים)"
+string ENG_WIN    = "חלון (גמיש)"
 string SMT_BOTH   = "שני הכיוונים"
 string SMT_WEAK   = "רק הנכס שלי חלש"
 string CISD_BODY  = "סגירת גוף"
@@ -48,7 +50,8 @@ cmp2On   = input.bool(false, "", inline = "c2", group = G2)
 cmp2     = input.symbol("CME_MINI:MNQ1!", "נכס השוואה 2", inline = "c2", group = G2)
 pivL     = input.int(6, "Pivot — נרות משמאל", minval = 1, group = G2)
 pivR     = input.int(6, "Pivot — נרות מימין", minval = 1, group = G2, tooltip = "כמה נרות מימין צריכים לאשר את השיא/שפל. מספר גבוה = פחות רעש אבל אישור מאוחר יותר. ב-LuxAlgo, Pivot Lookback = שני הערכים.")
-maxDist  = input.int(40, "מרחק מקס' בין שני השיאים (נרות)", minval = 3, group = G2)
+smtEngine = input.string(ENG_LUX, "שיטת זיהוי SMT", options = [ENG_LUX, ENG_WIN], group = G2, tooltip = "LuxAlgo: זהה לאינדיקטור SMT Divergences — SMT רק כששני הנכסים עשו פיבוט באותו נר.\nחלון: משווה לשיא/שפל של נכס ההשוואה בחלון הפיבוט — מזהה יותר SMT-ים, גם כשבנכס ההשוואה אין פיבוט מלא.")
+maxDist  = input.int(100, "מרחק מקס' בין שני השיאים (נרות)", minval = 3, group = G2, tooltip = "ב-LuxAlgo אין מגבלה. מספר נמוך יותר = רק SMT-ים בין שיאים קרובים.")
 smtMode  = input.string(SMT_BOTH, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], group = G2, tooltip = "שני הכיוונים: כל אחד מהנכסים יכול להיות זה שנכשל.\nרק הנכס שלי חלש: בשורט — הנכס שלי עשה שיא נמוך יותר וההשוואה שיא גבוה יותר (ולהפך בלונג).")
 
 cisdMode = input.string(CISD_BODY, "שבירת CISD לפי", options = [CISD_BODY, CISD_WICK], group = G3)
@@ -109,104 +112,205 @@ showTbl  = input.bool(true, "הצג טבלת סטטוס", group = G10)
 
 // ───────────── נתוני המודל (5 דק') — ללא ריפיינט ─────────────
 // כל הערכים מוחזרים מהנר הסגור האחרון של טיימפריים המודל ([1] + lookahead_on)
-f_model(int L, int R, int maxD) =>
-    float ph = ta.pivothigh(high, L, R)
-    float pl = ta.pivotlow(low, L, R)
-    var float lastPH   = na
-    var int   lastPHbi = na
-    var int   lastPHt  = na
-    var float lastPL   = na
-    var int   lastPLbi = na
-    var int   lastPLt  = na
-    bool  newPH   = not na(ph)
-    bool  newPL   = not na(pl)
-    float prevPH  = na
-    int   prevPHt = na
-    float lowBtw  = na
-    float prevPL  = na
-    int   prevPLt = na
-    float highBtw = na
-    if newPH
-        int pb = bar_index - R
-        if not na(lastPHbi) and pb - lastPHbi >= 2 and pb - lastPHbi <= maxD
-            float m = low[R + 1]
-            for i = R + 1 to bar_index - lastPHbi - 1
-                m := math.min(m, low[i])
-            prevPH  := lastPH
-            prevPHt := lastPHt
-            lowBtw  := m
-        lastPH   := ph
-        lastPHbi := pb
-        lastPHt  := time[R]
-    if newPL
-        int pb = bar_index - R
-        if not na(lastPLbi) and pb - lastPLbi >= 2 and pb - lastPLbi <= maxD
-            float m = high[R + 1]
-            for i = R + 1 to bar_index - lastPLbi - 1
-                m := math.max(m, high[i])
-            prevPL  := lastPL
-            prevPLt := lastPLt
-            highBtw := m
-        lastPL   := pl
-        lastPLbi := pb
-        lastPLt  := time[R]
+f_model(int L, int R) =>
+    float ph   = ta.pivothigh(high, L, R)
+    float pl   = ta.pivotlow(low, L, R)
+    int   pT   = time[R]
     float minC = ta.lowest(close, R)
     float minL = ta.lowest(low, R)
     float maxC = ta.highest(close, R)
     float maxH = ta.highest(high, R)
-    int   pT   = time[R]
-    [newPH[1], ph[1], pT[1], prevPH[1], prevPHt[1], lowBtw[1], minC[1], minL[1], newPL[1], pl[1], prevPL[1], prevPLt[1], highBtw[1], maxC[1], maxH[1], close[1], high[1], low[1], time[1]]
+    [ph[1], pl[1], pT[1], minC[1], minL[1], maxC[1], maxH[1], close[1], high[1], low[1], time[1]]
 
-// חלון השיא/שפל של נכס ההשוואה סביב אותו פיבוט (אותם נרות בזמן)
-f_win(int n) =>
-    [ta.highest(high, n)[1], ta.lowest(low, n)[1], time[1]]
+// נכס השוואה: פיבוטים (שיטת LuxAlgo) + שיא/שפל בחלון הפיבוט (שיטת חלון)
+f_cmp(int L, int R) =>
+    float ph = ta.pivothigh(high, L, R)
+    float pl = ta.pivotlow(low, L, R)
+    float hw = ta.highest(high, L + R + 1)
+    float lw = ta.lowest(low, L + R + 1)
+    [ph[1], pl[1], hw[1], lw[1], time[1]]
 
-[mNewPH, mPH, mPT, mPrevPH, mPrevPHt, mLowBtw, mMinC, mMinL, mNewPL, mPL, mPrevPL, mPrevPLt, mHighBtw, mMaxC, mMaxH, mC, mH, mL, mT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, maxDist), lookahead = barmerge.lookahead_on)
-[c1HiW, c1LoW, c1T] = request.security(cmp1, modelTf, f_win(pivL + pivR + 1), lookahead = barmerge.lookahead_on)
-[c2HiW, c2LoW, c2T] = request.security(cmp2, modelTf, f_win(pivL + pivR + 1), lookahead = barmerge.lookahead_on)
+[mPH, mPL, mPT, mMinC, mMinL, mMaxC, mMaxH, mC, mH, mL, mT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR), lookahead = barmerge.lookahead_on)
+[c1PH, c1PL, c1HiW, c1LoW, c1T] = request.security(cmp1, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
+[c2PH, c2PL, c2HiW, c2LoW, c2T] = request.security(cmp2, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
 
 bool newHtf = not na(mT) and mT != nz(mT[1])
 bool tfOk   = timeframe.in_seconds() < timeframe.in_seconds(modelTf)
 int  tfMs   = timeframe.in_seconds(modelTf) * 1000
 
+// היסטוריית נרות המודל — לחישוב רמת ה-CISD (השפל/שיא שבין שני הפיבוטים)
+var array<int>   hT  = array.new<int>()
+var array<float> hLo = array.new<float>()
+var array<float> hHi = array.new<float>()
+if newHtf
+    array.push(hT, mT)
+    array.push(hLo, mL)
+    array.push(hHi, mH)
+    if array.size(hT) > 1000
+        array.shift(hT)
+        array.shift(hLo)
+        array.shift(hHi)
+
+// השפל (wantLow) או השיא הקיצוני של נרות המודל שבין t1 ל-t2 (לא כולל)
+f_between(int t1, int t2, bool wantLow) =>
+    float r = na
+    int n = array.size(hT)
+    if n > 0 and not na(t1)
+        for i = n - 1 to 0
+            int t = array.get(hT, i)
+            if t <= t1
+                break
+            if t < t2
+                float v = wantLow ? array.get(hLo, i) : array.get(hHi, i)
+                r := na(r) ? v : wantLow ? math.min(r, v) : math.max(r, v)
+    r
+
 // ───────────── זיהוי SMT ─────────────
-// שורט: בין שני שיאים — נכס אחד עושה שיא גבוה יותר והשני לא
-// לונג: בין שני שפלים — נכס אחד עושה שפל נמוך יותר והשני לא
-f_bearDiv(float cur, float prev, bool weakOnly) =>
-    bool mainLH = mPH < mPrevPH
-    bool mainHH = mPH > mPrevPH
-    (mainLH and cur > prev) or (not weakOnly and mainHH and cur < prev)
+// לוגיקת LuxAlgo: SMT רק כששני הנכסים עשו פיבוט באותו נר והכיוונים הפוכים.
+// אם הנכס שלי עושה פיבוט קיצוני יותר לבד — נקודת הייחוס מתאפסת.
+// מחזיר [divergence, y1 חדש, sym_y1 חדש, x1 חדש]
+f_lux(bool isHigh, float y2, int x2, float prevMain, float symY2, float y1, float sy1, int x1) =>
+    bool  div  = false
+    float ny1  = y1
+    float nsy1 = sy1
+    int   nx1  = x1
+    if not na(symY2)
+        div  := not na(y1) and not na(sy1) and (y2 - y1) * (symY2 - sy1) < 0
+        ny1  := y2
+        nsy1 := symY2
+        nx1  := x2
+    else if not na(prevMain) and (isHigh ? y2 > prevMain : y2 < prevMain)
+        ny1  := y2
+        nsy1 := na
+        nx1  := x2
+    [div, ny1, nsy1, nx1]
 
-f_bullDiv(float cur, float prev, bool weakOnly) =>
-    bool mainHL = mPL > mPrevPL
-    bool mainLL = mPL < mPrevPL
-    (mainHL and cur < prev) or (not weakOnly and mainLL and cur > prev)
+bool weak   = smtMode == SMT_WEAK
+bool useLux = smtEngine == ENG_LUX
 
-var float c1LastHi = na
-var float c1LastLo = na
-var float c2LastHi = na
-var float c2LastLo = na
-bool bearSMT = false
-bool bullSMT = false
-bool weak    = smtMode == SMT_WEAK
+// הפיבוט הקודם של הנכס שלי
+var float mLastPH  = na
+var int   mLastPHt = na
+var float mLastPL  = na
+var int   mLastPLt = na
+// מצב LuxAlgo לכל נכס השוואה (שיאים / שפלים)
+var float lx1yH = na
+var float lx1sH = na
+var int   lx1xH = na
+var float lx1yL = na
+var float lx1sL = na
+var int   lx1xL = na
+var float lx2yH = na
+var float lx2sH = na
+var int   lx2xH = na
+var float lx2yL = na
+var float lx2sL = na
+var int   lx2xL = na
+// מצב שיטת החלון
+var float w1H = na
+var float w1L = na
+var float w2H = na
+var float w2L = na
+
+bool  bearSMT = false
+bool  bullSMT = false
+float smtRef  = na
+int   smtRefT = na
+float smtCisd = na
 
 if newHtf
     bool al1 = c1T == mT
     bool al2 = c2T == mT
-    if mNewPH
-        if not na(mPrevPH) and not na(mLowBtw)
-            bool d1 = cmp1On and al1 and not na(c1LastHi) and f_bearDiv(c1HiW, c1LastHi, weak)
-            bool d2 = cmp2On and al2 and not na(c2LastHi) and f_bearDiv(c2HiW, c2LastHi, weak)
-            bearSMT := d1 or d2
-        c1LastHi := al1 ? c1HiW : na
-        c2LastHi := al2 ? c2HiW : na
-    if mNewPL
-        if not na(mPrevPL) and not na(mHighBtw)
-            bool d1 = cmp1On and al1 and not na(c1LastLo) and f_bullDiv(c1LoW, c1LastLo, weak)
-            bool d2 = cmp2On and al2 and not na(c2LastLo) and f_bullDiv(c2LoW, c2LastLo, weak)
-            bullSMT := d1 or d2
-        c1LastLo := al1 ? c1LoW : na
-        c2LastLo := al2 ? c2LoW : na
+    if not na(mPH)
+        bool  d1  = false
+        bool  d2  = false
+        float r1  = na
+        int   r1t = na
+        float r2  = na
+        int   r2t = na
+        if useLux
+            r1  := lx1yH
+            r1t := lx1xH
+            r2  := lx2yH
+            r2t := lx2xH
+            [hd1, hy1, hs1, hx1] = f_lux(true, mPH, mPT, mLastPH, al1 ? c1PH : na, lx1yH, lx1sH, lx1xH)
+            [hd2, hy2, hs2, hx2] = f_lux(true, mPH, mPT, mLastPH, al2 ? c2PH : na, lx2yH, lx2sH, lx2xH)
+            d1    := hd1
+            d2    := hd2
+            lx1yH := hy1
+            lx1sH := hs1
+            lx1xH := hx1
+            lx2yH := hy2
+            lx2sH := hs2
+            lx2xH := hx2
+        else
+            r1  := mLastPH
+            r1t := mLastPHt
+            r2  := mLastPH
+            r2t := mLastPHt
+            d1  := al1 and not na(mLastPH) and not na(w1H) and (mPH - mLastPH) * (c1HiW - w1H) < 0
+            d2  := al2 and not na(mLastPH) and not na(w2H) and (mPH - mLastPH) * (c2HiW - w2H) < 0
+            w1H := al1 ? c1HiW : na
+            w2H := al2 ? c2HiW : na
+        bool use1 = cmp1On and d1
+        bool use2 = cmp2On and d2
+        if use1 or use2
+            float refY = use1 ? r1 : r2
+            int   refT = use1 ? r1t : r2t
+            float lvl  = f_between(refT, mPT, true)
+            bool  ok   = not na(lvl) and mPT - refT <= maxDist * tfMs and (not weak or mPH < refY)
+            if ok
+                bearSMT := true
+                smtRef  := refY
+                smtRefT := refT
+                smtCisd := lvl
+        mLastPH  := mPH
+        mLastPHt := mPT
+    if not na(mPL)
+        bool  d1  = false
+        bool  d2  = false
+        float r1  = na
+        int   r1t = na
+        float r2  = na
+        int   r2t = na
+        if useLux
+            r1  := lx1yL
+            r1t := lx1xL
+            r2  := lx2yL
+            r2t := lx2xL
+            [ld1, ly1, ls1, lt1] = f_lux(false, mPL, mPT, mLastPL, al1 ? c1PL : na, lx1yL, lx1sL, lx1xL)
+            [ld2, ly2, ls2, lt2] = f_lux(false, mPL, mPT, mLastPL, al2 ? c2PL : na, lx2yL, lx2sL, lx2xL)
+            d1    := ld1
+            d2    := ld2
+            lx1yL := ly1
+            lx1sL := ls1
+            lx1xL := lt1
+            lx2yL := ly2
+            lx2sL := ls2
+            lx2xL := lt2
+        else
+            r1  := mLastPL
+            r1t := mLastPLt
+            r2  := mLastPL
+            r2t := mLastPLt
+            d1  := al1 and not na(mLastPL) and not na(w1L) and (mPL - mLastPL) * (c1LoW - w1L) < 0
+            d2  := al2 and not na(mLastPL) and not na(w2L) and (mPL - mLastPL) * (c2LoW - w2L) < 0
+            w1L := al1 ? c1LoW : na
+            w2L := al2 ? c2LoW : na
+        bool use1 = cmp1On and d1
+        bool use2 = cmp2On and d2
+        if use1 or use2
+            float refY = use1 ? r1 : r2
+            int   refT = use1 ? r1t : r2t
+            float lvl  = f_between(refT, mPT, false)
+            bool  ok   = not na(lvl) and mPT - refT <= maxDist * tfMs and (not weak or mPL > refY)
+            if ok
+                bullSMT := true
+                smtRef  := refY
+                smtRefT := refT
+                smtCisd := lvl
+        mLastPL  := mPL
+        mLastPLt := mPT
 
 // ───────────── סשנים ─────────────
 f_in(string s) =>
@@ -460,9 +564,9 @@ if bearSMT and allowShort and isFlat
     stStage  := 1
     stSwing  := mPH
     stSwingT := mPT
-    stPrev   := mPrevPH
-    stPrevT  := mPrevPHt
-    stCisd   := mLowBtw
+    stPrev   := smtRef
+    stPrevT  := smtRefT
+    stCisd   := smtCisd
     stArmT   := time
     stExt    := mMinL
     if (cisdMode == CISD_BODY ? mMinC : mMinL) < stCisd
@@ -480,9 +584,9 @@ if bullSMT and allowLong and isFlat
     stStage  := 1
     stSwing  := mPL
     stSwingT := mPT
-    stPrev   := mPrevPL
-    stPrevT  := mPrevPLt
-    stCisd   := mHighBtw
+    stPrev   := smtRef
+    stPrevT  := smtRefT
+    stCisd   := smtCisd
     stArmT   := time
     stExt    := mMaxH
     if (cisdMode == CISD_BODY ? mMaxC : mMaxH) > stCisd
