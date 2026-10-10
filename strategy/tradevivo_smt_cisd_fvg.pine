@@ -71,7 +71,7 @@ riskUsd  = input.float(200, "סיכון קבוע לעסקה ($)", minval = 1, gr
 maxQty   = input.int(10, "מקסימום חוזים", minval = 1, group = G5)
 slBuf    = input.int(2, "מרווח סטופ מעבר לשיא/שפל (טיקים)", minval = 0, group = G5)
 slMinT   = input.int(8, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
-slMaxT   = input.int(400, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
+slMaxT   = input.int(1000, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
 
 tp1RR  = input.float(1.0, "TP1 — RR", minval = 0.1, step = 0.1, inline = "tp1", group = G6)
 tp1Pct = input.float(50, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
@@ -642,11 +642,19 @@ if bullSMT and allowLong and isFlat
         if stStage == 2
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
 
+// תווית אבחון: למה סטאפ הסתיים בלי עסקה
+var string whyNot = ""
+f_endLabel(int dir, string reason) =>
+    if showDraw
+        label.new(bar_index, dir == -1 ? high : low, reason, style = dir == -1 ? label.style_label_down : label.style_label_up, color = color.new(color.gray, 15), textcolor = color.white, size = size.small)
+    0
+
 if stStage > 0 and isFlat
     stExt := stDir == -1 ? math.min(stExt, low) : math.max(stExt, high)
     bool beyond = stDir == -1 ? high > stSwing : low < stSwing
     if beyond
         // המחיר עבר את שיא/שפל ה-SMT — הסטאפ בוטל
+        f_endLabel(stDir, "בוטל: המחיר עבר את השיא/שפל" + (stStage == 2 and whyNot != "" ? "\n" + whyNot : ""))
         stStage := 0
         stDir   := 0
     else if stStage == 1
@@ -659,12 +667,14 @@ if stStage > 0 and isFlat
                 if showDraw
                     label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
             else if time - stArmT >= cisdWait * tfMs
+                f_endLabel(stDir, "בוטל: אין שבירת CISD בזמן")
                 stStage := 0
                 stDir   := 0
         if showDraw and not na(lnCisd) and stStage >= 1
             line.set_x2(lnCisd, time)
     else if stStage == 2
         if time - stCisdT >= entryWait * 60000
+            f_endLabel(stDir, "בוטל: עבר זמן הכניסה" + (whyNot != "" ? "\n" + whyNot : ""))
             stStage := 0
             stDir   := 0
 
@@ -674,6 +684,10 @@ bool placed   = false
 var float alertedLvl = na
 var int   lockT      = na
 var int   lockArm    = na
+
+string whyNow = ""
+if strategy.position_size == 0 and stStage == 2 and not canTrade
+    whyNow := not tfOk ? "הגרף לא על דקה" : sessIdx == 0 ? "מחוץ לסשן" : dayLock ? "נעול: מגבלה יומית" : "הגעת למקס' עסקאות"
 
 if strategy.position_size == 0 and stStage == 2 and canTrade
     if na(lockArm) or lockArm != stArmT
@@ -696,7 +710,9 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
         fBot := aB
         fT   := aX
     lockT := fT
-    if not na(lvl)
+    if na(lvl)
+        whyNow := "אין FVG מתאים מעל/מתחת למחיר"
+    else
         float sl    = stSwing - stDir * slBuf * syminfo.mintick
         float risk  = math.abs(lvl - sl)
         float rTick = risk / syminfo.mintick
@@ -710,9 +726,16 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
         float lastT = q3 > 0 ? t3 : q2 > 0 ? t2 : t1
         bool  tgtHit = cancelTgt and (stDir == -1 ? stExt <= lastT : stExt >= lastT)
         if tgtHit
+            f_endLabel(stDir, "בוטל: המחיר הגיע ליעד לפני הכניסה")
             stStage := 0
             stDir   := 0
-        else if qty >= 1 and rTick >= slMinT and rTick <= slMaxT
+        else if qty < 1
+            whyNow := "הסיכון קטן מדי לחוזה אחד: חוזה = " + str.tostring(risk * syminfo.pointvalue, "#,##0") + "$"
+        else if rTick < slMinT
+            whyNow := "סטופ קטן מדי (" + str.tostring(rTick, "#") + " טיקים)"
+        else if rTick > slMaxT
+            whyNow := "סטופ גדול מדי (" + str.tostring(rTick, "#") + " טיקים)"
+        else
             f_cancelSide(-stDir)
             strategy.entry(stDir == 1 ? "Long" : "Short", stDir == 1 ? strategy.long : strategy.short, qty = qty, limit = lvl)
             f_exits(stDir, sl, t1, t2, t3, q1, q2, q3, false, false)
@@ -738,6 +761,11 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
                 alert(str.format("{0} LIMIT @ {1} | SL {2} | TP {3} | Qty {4}", stDir == 1 ? "LONG" : "SHORT", str.tostring(lvl, format.mintick), str.tostring(sl, format.mintick), str.tostring(lastT, format.mintick), qty), alert.freq_once_per_bar_close)
                 alertedLvl := lvl
 
+if whyNow != ""
+    whyNot := whyNow
+if stStage == 0
+    whyNot := ""
+
 if not placed and strategy.position_size == 0
     f_cancelSide(1)
     f_cancelSide(-1)
@@ -758,7 +786,7 @@ f_row(table t, int r, string k, string v, color c) =>
 var table tbl = table.new(position.top_right, 2, 8, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
 if showTbl and barstate.islast
     string side   = stDir == -1 ? "שורט" : "לונג"
-    string status = strategy.position_size > 0 ? "בעסקת לונג" : strategy.position_size < 0 ? "בעסקת שורט" : stStage == 1 ? side + ": ממתין ל-CISD" : stStage == 2 ? (placed ? side + ": לימיט ב-FVG" : side + ": מחפש FVG") : "מחפש SMT"
+    string status = strategy.position_size > 0 ? "בעסקת לונג" : strategy.position_size < 0 ? "בעסקת שורט" : stStage == 1 ? side + ": ממתין ל-CISD" : stStage == 2 ? (placed ? side + ": לימיט ב-FVG" : side + ": " + (whyNow != "" ? whyNow : "מחפש FVG")) : "מחפש SMT"
     f_row(tbl, 0, "סטטוס", status, color.white)
     f_row(tbl, 1, "רווח/הפסד היום", str.tostring(dayTot, "#,##0.00") + " $", dayTot >= 0 ? color.lime : color.red)
     f_row(tbl, 2, "עסקאות בסשן", str.tostring(cSess) + " / " + str.tostring(maxSess), color.white)
