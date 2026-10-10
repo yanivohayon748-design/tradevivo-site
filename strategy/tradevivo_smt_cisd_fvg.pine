@@ -126,6 +126,7 @@ s5   = input.session("1830-2300", "", inline = "s5", group = G9)
 flatEnd = input.bool(false, "סגור פוזיציה בסוף הסשן", group = G9)
 
 showDraw = input.bool(true, "הצג SMT / CISD / FVG על הגרף", group = G10)
+showFail = input.bool(false, "הצג גם SMT-ים שלא הגיעו ל-CISD", group = G10, tooltip = "כבוי: על הגרף נשארים רק סטאפים שעברו CISD — פחות רעש. המונים בטבלה סופרים הכל.")
 showTbl  = input.bool(true, "הצג טבלת סטטוס", group = G10)
 
 // רשומת שיא/שפל עבור זיהוי SMT חי
@@ -144,6 +145,7 @@ type Piv
     float usedExt
     bool  dead    = false
     bool  again   = false
+    int   fires   = 0
 
 // ───────────── נתוני המודל (5 דק') — ללא ריפיינט ─────────────
 // כל הערכים מוחזרים מהנר הסגור האחרון של טיימפריים המודל ([1] + lookahead_on)
@@ -441,7 +443,7 @@ if useLive and newHtf
             bool typeA  = (sw1 or sw2) and not mainSw
             bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
             bool tooOld = mT - p.t > maxDist * tfMs
-            bool fresh  = not p.used and (not p.again or mH < p.ext)
+            bool fresh  = not p.used and p.fires < 3 and (not p.again or mH < p.ext)
             p.dead := tooOld or (mainSw and (weak or ((not on1 or sw1) and (not on2 or sw2))))
             if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
                 if bestI < 0 or p.px > bestPx
@@ -459,6 +461,7 @@ if useLive and newHtf
             lvBType   := q.ext > q.px ? 2 : 1
             q.used    := true
             q.usedExt := q.ext
+            q.fires   += 1
         for i = array.size(pvHs) - 1 to 0
             Piv d = array.get(pvHs, i)
             if d.dead
@@ -490,7 +493,7 @@ if useLive and newHtf
             bool typeA  = (sw1 or sw2) and not mainSw
             bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
             bool tooOld = mT - p.t > maxDist * tfMs
-            bool fresh  = not p.used and (not p.again or mL > p.ext)
+            bool fresh  = not p.used and p.fires < 3 and (not p.again or mL > p.ext)
             p.dead := tooOld or (mainSw and (weak or ((not on1 or sw1) and (not on2 or sw2))))
             if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
                 if bestI < 0 or p.px < bestPx
@@ -508,6 +511,7 @@ if useLive and newHtf
             lvUType   := q.ext < q.px ? 2 : 1
             q.used    := true
             q.usedExt := q.ext
+            q.fires   += 1
         for i = array.size(pvLs) - 1 to 0
             Piv d = array.get(pvLs, i)
             if d.dead
@@ -832,6 +836,13 @@ f_winEnd(float price, int swingT, bool isHigh) =>
         r := (na(t1m) ? swingT : t1m) + (fvgWin + 1) * barMs
     r
 
+// מחיקת הציור של סטאפ שלא הגיע ל-CISD (כשהתצוגה שלהם כבויה)
+f_clearSetup() =>
+    line.delete(lnSmt)
+    label.delete(lbSmt)
+    line.delete(lnCisd)
+    0
+
 // טקסט תווית ה-SMT: מול איזה שיא/שפל ומה רמת ה-CISD
 f_smtTxt() =>
     "SMT מול " + str.tostring(stPrev, format.mintick) + " (" + str.format_time(stPrevT, "HH:mm", tz) + ")\nCISD " + str.tostring(stCisd, format.mintick)
@@ -848,6 +859,8 @@ bool goBull = useLive ? lvBull : bullSMT
 if goBear and allowShort and isFlat and (stStage == 0 or (stStage == 1 and stDir == 1))
     if stStage > 0
         nRepl += 1
+        if not showFail
+            f_clearSetup()
     nSmt     += 1
     nSmtS    += 1
     stDir    := -1
@@ -881,6 +894,8 @@ if goBear and allowShort and isFlat and (stStage == 0 or (stStage == 1 and stDir
 if goBull and allowLong and isFlat and (stStage == 0 or (stStage == 1 and stDir == -1))
     if stStage > 0
         nRepl += 1
+        if not showFail
+            f_clearSetup()
     nSmt     += 1
     nSmtL    += 1
     stDir    := 1
@@ -939,7 +954,10 @@ if stStage > 0 and isFlat
     bool beyond = stLive and stStage == 1 ? stLType == 1 and (stDir == -1 ? high > stPrev : low < stPrev) : stDir == -1 ? high > stSwing : low < stSwing
     if beyond
         // המחיר עבר את שיא/שפל ה-SMT — הסטאפ בוטל
-        f_endLabel(stDir, "בוטל: המחיר עבר את השיא/שפל" + (stStage == 2 and whyNot != "" ? "\n" + whyNot : ""))
+        if stStage == 1 and not showFail
+            f_clearSetup()
+        else
+            f_endLabel(stDir, "בוטל: המחיר עבר את השיא/שפל" + (stStage == 2 and whyNot != "" ? "\n" + whyNot : ""))
         nCxBeyond += 1
         nNoFvg    += stStage == 2 and whyNot == WHY_NOFVG ? 1 : 0
         nOutSess  += stStage == 2 and whyNot == WHY_SESS ? 1 : 0
@@ -957,7 +975,10 @@ if stStage > 0 and isFlat
                 if showDraw
                     label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
             else if time - math.max(stArmT, stSwingT) >= cisdWait * tfMs
-                f_endLabel(stDir, "בוטל: אין שבירת CISD בזמן")
+                if showFail
+                    f_endLabel(stDir, "בוטל: אין שבירת CISD בזמן")
+                else
+                    f_clearSetup()
                 nCxCisd += 1
                 stStage := 0
                 stDir   := 0
