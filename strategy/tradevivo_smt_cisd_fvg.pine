@@ -828,8 +828,8 @@ bool allowShort = dirMode != DIR_LONG
 bool goBear = useLive ? lvBear : bearSMT
 bool goBull = useLive ? lvBull : bullSMT
 
-// סטאפ שכבר עבר CISD וממתין לכניסה לא מוחלף ב-SMT חדש
-if goBear and allowShort and isFlat and stStage < 2
+// סטאפ פעיל לא מוחלף ב-SMT חדש באותו כיוון, וסטאפ שכבר עבר CISD לא מוחלף בכלל
+if goBear and allowShort and isFlat and (stStage == 0 or (stStage == 1 and stDir == 1))
     if stStage > 0
         nRepl += 1
     nSmt     += 1
@@ -862,7 +862,7 @@ if goBear and allowShort and isFlat and stStage < 2
         if not na(chkB) and chkB < stCisd
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
 
-if goBull and allowLong and isFlat and stStage < 2
+if goBull and allowLong and isFlat and (stStage == 0 or (stStage == 1 and stDir == -1))
     if stStage > 0
         nRepl += 1
     nSmt     += 1
