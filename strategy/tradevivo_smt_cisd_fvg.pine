@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v33", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v34", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -34,6 +34,8 @@ string PICK_MID   = "האמצעי"
 string EDGE_NEAR  = "קצה קרוב"
 string EDGE_MID   = "אמצע (50%)"
 string EDGE_FAR   = "קצה רחוק"
+string STOP_NORM  = "רגיל: מעבר לשיא/שפל ה-SMT"
+string STOP_STRUCT = "מבנה אחד מעבר לשיא/שפל ה-SMT"
 string ENT_1M     = "גרף דקה"
 string ENT_MODEL  = "גרף 5 דק' (טיימפריים המודל)"
 string WIN_MODEL  = "נרות של טיימפריים המודל (5 דק')"
@@ -76,6 +78,7 @@ needCisd = input.bool(true, "חובה לחכות ל-CISD לפני הכניסה",
 cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
 
 entryTf   = input.string(ENT_1M, "גרף הכניסה (ה-FVG)", options = [ENT_1M, ENT_MODEL], group = G4, tooltip = "על איזה גרף מחפשים את ה-FVG של הכניסה.\nגרף דקה: FVG מנרות דקה.\nגרף 5 דק': FVG מנרות 5 דקות (החלון של X נרות נספר גם הוא בנרות 5 דקות). הלימיט עדיין מתמלא לפי נרות הדקה, כך שהמילוי מדויק.\nעל גרף 5 דקות שתי האפשרויות זהות (ה-FVG תמיד מנרות 5 דקות).")
+fvgCisd   = input.bool(true, "קבל גם FVG מהתזוזה ששברה את ה-CISD", group = G4, tooltip = "בנוסף ל-FVG שנוצר X נרות אחרי נר ה-SMT — גם FVG שנוצר בנר ה-5 דקות ששבר את ה-CISD או ב-X הנרות שאחריו.")
 fvgPick   = input.string(PICK_MID, "איזה FVG", options = [PICK_MID, PICK_SWING, PICK_NEAR, PICK_BIG], group = G4, tooltip = "מבין ה-FVG-ים שנוצרו בתנועה מהשיא (בשורט) או מהשפל (בלונג):\nהאמצעי: עם 3 FVG-ים בוחר את האמצעי, עם 2 את העליון (בשורט).\nהעליון ביותר: הכי קרוב לשיא/שפל של ה-SMT.\nהקרוב למחיר: הראשון שהמחיר יגיע אליו.")
 fvgEdge   = input.string(EDGE_NEAR, "נקודת כניסה ב-FVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G4)
 fvgWin    = input.int(4, "FVG רק בתוך X נרות אחרי נר ה-SMT", minval = 1, group = G4, tooltip = "ה-FVG של הכניסה חייב להיווצר בנר של ה-SMT או ב-X הנרות שאחריו.")
@@ -93,6 +96,8 @@ maxQty   = input.int(10, "מקסימום חוזים", minval = 1, group = G5)
 slBuf    = input.int(2, "מרווח סטופ מעבר לשיא/שפל (טיקים)", minval = 0, group = G5)
 slMinT   = input.int(8, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
 slMaxT   = input.int(1000, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
+stopB    = input.string(STOP_STRUCT, "סטופ כשנאסד\"ק לקח את הנזילות ו-MES לא", options = [STOP_NORM, STOP_STRUCT], group = G5, tooltip = "לונג: MNQ שבר את השפל ו-MES לא. שורט: MNQ שבר את השיא ו-MES לא.\nבמקרים האלה נאסד\"ק עלול להמשיך ולקחת את הסטופ, אז הסטופ יכול לשבת מבנה אחד מעבר: השפל (בלונג) / השיא (בשורט) הקודם בגרף 5 דקות שנמצא מעבר לשפל/שיא ה-SMT. הסיכון בדולרים לא משתנה — פשוט פחות חוזים.\nאם אין מבנה כזה — סטופ רגיל.")
+structK  = input.int(3, "גודל מבנה (נרות 5 דק' מכל צד)", minval = 1, group = G5, tooltip = "שפל/שיא נחשב מבנה אם הוא הנמוך/הגבוה ביותר מבין X נרות 5 דקות מכל צד שלו.")
 
 tp1RR  = input.float(1.0, "TP1 — RR", minval = 0.1, step = 0.1, inline = "tp1", group = G6)
 tp1Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
@@ -376,6 +381,8 @@ var int   stPrevT  = na
 var float stCisd   = na
 var int   stArmT   = na
 var int   stCisdT  = na
+var int   stCisdBT = na
+var float stStopRef = na
 var float stExt    = na
 var int   stWinEnd = na
 var bool  stLive   = false
@@ -645,7 +652,7 @@ f_lvl(int dir, float t, float b) =>
 // בחירת FVG לכניסה מבין אלה שנוצרו אחרי שיא/שפל ה-SMT.
 // הבחירה ננעלת: היא מתעדכנת רק כשנוצר FVG חדש בתנועה (או כשה-FVG הנבחר נפסל),
 // ולא זזה כשהמחיר חוזר ופוסל את ה-FVG-ים הקרובים אליו.
-f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing, int swingT, int winEnd, float ext, int lockedT, bool repick) =>
+f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing, int swingT, int winEnd, float ext, int lockedT, bool repick, int w2s, int w2e) =>
     int n = array.size(tops)
     int bestI = na
     if not repick and not na(lockedT) and n > 0
@@ -664,7 +671,8 @@ f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing
             float b   = array.get(bots, i)
             float lvl = f_lvl(dir, t, b)
             int  ft    = array.get(ts, i)
-            bool inLeg = ft >= swingT and (na(winEnd) or ft < winEnd) and (dir == -1 ? t <= swing : b >= swing)
+            bool inWin = na(winEnd) or ft < winEnd or (not na(w2s) and ft >= w2s and ft < w2e)
+            bool inLeg = ft >= swingT and inWin and (dir == -1 ? t <= swing : b >= swing)
             bool ahead = dir == -1 ? lvl > close : lvl < close
             bool pdOk  = not usePD or (dir == -1 ? lvl >= eq : lvl <= eq)
             if inLeg and ahead and pdOk
@@ -873,6 +881,42 @@ f_winEnd(float price, int swingT, bool isHigh) =>
         r := (na(t1m) ? swingT : t1m) + (fvgWin + 1) * barMs
     r
 
+// המבנה הבא מעבר לשיא/שפל ה-SMT: השיא (isHigh) / השפל האחרון בגרף 5 דקות לפני נר ה-SMT
+// שגבוה/נמוך ממנו, והוא הקיצון של structK נרות מכל צד
+f_structStop(float price, int swingT, bool isHigh) =>
+    float r = na
+    int n = array.size(hT)
+    if n > 2 * structK + 1 and not na(swingT) and not na(price)
+        int start = -1
+        for i = n - 1 to 0
+            if array.get(hT, i) < swingT
+                start := i
+                break
+        int top = math.min(start, n - 1 - structK)
+        if top >= structK
+            for j = top to structK
+                float v = isHigh ? array.get(hHi, j) : array.get(hLo, j)
+                if isHigh ? v > price : v < price
+                    bool fr = true
+                    for m = 1 to structK
+                        float a = isHigh ? array.get(hHi, j - m) : array.get(hLo, j - m)
+                        float b = isHigh ? array.get(hHi, j + m) : array.get(hLo, j + m)
+                        if isHigh ? (a > v or b > v) : (a < v or b < v)
+                            fr := false
+                            break
+                    if fr
+                        r := v
+                        break
+    r
+
+// נקודת הייחוס של הסטופ: SMT שבו נאסד"ק לקח את הנזילות (סוג 2) → מבנה אחד מעבר, אחרת שיא/שפל ה-SMT
+f_stopRef(float sw, int swT, int typ, bool isHigh) =>
+    float r = sw
+    if useLive and typ == 2 and stopB == STOP_STRUCT
+        float st = f_structStop(sw, swT, isHigh)
+        r := na(st) ? sw : st
+    r
+
 // מחיקת הציור של סטאפ שלא הגיע ל-CISD (כשהתצוגה שלהם כבויה)
 f_clearSetup() =>
     line.delete(lnSmt)
@@ -930,14 +974,18 @@ if goBear and allowShort and isFlat and (stStage == 0 or okReplS)
     stLive   := useLive
     stLType  := lvBType
     stWinEnd := f_winEnd(stSwing, stSwingT, true)
+    stStopRef := f_stopRef(stSwing, stSwingT, stLType, true)
+    stCisdBT := na
     float chkB = cisdMode == CISD_1M ? f_extClose(stSwingT, true) : cisdMode == CISD_BODY ? (useLive ? mC : mMinC) : (useLive ? mL : mMinL)
     if not na(chkB) and chkB < stCisd
         stStage := 2
         stCisdT := time
+        stCisdBT := cisdMode == CISD_1M ? time : mT
         nCisd   += 1
     else if not needCisd
         stStage := 2
         stCisdT := time
+        stCisdBT := cisdMode == CISD_1M ? time : mT
     if showDraw
         lnSmt  := line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.red, width = 2)
         lbSmt  := label.new(x = stSwingT, y = stSwing, text = f_smtTxt(), xloc = xloc.bar_time, style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
@@ -966,14 +1014,18 @@ if goBull and allowLong and isFlat and (stStage == 0 or okReplL)
     stLive   := useLive
     stLType  := lvUType
     stWinEnd := f_winEnd(stSwing, stSwingT, false)
+    stStopRef := f_stopRef(stSwing, stSwingT, stLType, false)
+    stCisdBT := na
     float chkU = cisdMode == CISD_1M ? f_extClose(stSwingT, false) : cisdMode == CISD_BODY ? (useLive ? mC : mMaxC) : (useLive ? mH : mMaxH)
     if not na(chkU) and chkU > stCisd
         stStage := 2
         stCisdT := time
+        stCisdBT := cisdMode == CISD_1M ? time : mT
         nCisd   += 1
     else if not needCisd
         stStage := 2
         stCisdT := time
+        stCisdBT := cisdMode == CISD_1M ? time : mT
     if showDraw
         lnSmt  := line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.lime, width = 2)
         lbSmt  := label.new(x = stSwingT, y = stSwing, text = f_smtTxt(), xloc = xloc.bar_time, style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
@@ -998,6 +1050,7 @@ if stStage > 0 and isFlat
             stCisd   := useIct ? (stDir == -1 ? mURO : mDRO) : stRun
             stExt    := stDir == -1 ? mL : mH
             stWinEnd := f_winEnd(stSwing, stSwingT, stDir == -1)
+            stStopRef := f_stopRef(stSwing, stSwingT, stLType, stDir == -1)
             if showDraw
                 line.set_xy2(lnSmt, stSwingT, stSwing)
                 label.set_xy(lbSmt, stSwingT, stSwing)
@@ -1028,6 +1081,7 @@ if stStage > 0 and isFlat
             if broke
                 stStage := 2
                 stCisdT := time
+                stCisdBT := cisdMode == CISD_1M ? time : mT
                 nCisd   += 1
                 if showDraw
                     label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
@@ -1069,14 +1123,18 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
     float fTop = na
     float fBot = na
     int   fT   = na
+    // חלון שני: FVG מהתזוזה ששברה את ה-CISD
+    int chartMs = timeframe.in_seconds() * 1000
+    int w2s = fvgCisd and not na(stCisdBT) ? stCisdBT - 2 * chartMs : na
+    int w2e = fvgCisd and not na(stCisdBT) ? (ent5 ? stCisdBT + (fvgWin + 1) * tfMs : math.max(stCisdT, stCisdBT + tfMs) + (fvgWin + 1) * chartMs) : na
     if stDir == -1
-        [aL, aT, aB, aX] = f_pick(-1, bTop, bBot, bT, stSwing, stSwingT, stWinEnd, stExt, lockT, newBearF)
+        [aL, aT, aB, aX] = f_pick(-1, bTop, bBot, bT, stSwing, stSwingT, stWinEnd, stExt, lockT, newBearF, w2s, w2e)
         lvl  := aL
         fTop := aT
         fBot := aB
         fT   := aX
     else
-        [aL, aT, aB, aX] = f_pick(1, uTop, uBot, uT, stSwing, stSwingT, stWinEnd, stExt, lockT, newBullF)
+        [aL, aT, aB, aX] = f_pick(1, uTop, uBot, uT, stSwing, stSwingT, stWinEnd, stExt, lockT, newBullF, w2s, w2e)
         lvl  := aL
         fTop := aT
         fBot := aB
@@ -1085,7 +1143,7 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
     if na(lvl)
         whyNow := WHY_NOFVG
     else
-        float sl    = stSwing - stDir * slBuf * syminfo.mintick
+        float sl    = nz(stStopRef, stSwing) - stDir * slBuf * syminfo.mintick
         float risk  = math.abs(lvl - sl)
         float rTick = risk / syminfo.mintick
         float rawQ  = risk > 0 ? riskUsd / (risk * syminfo.pointvalue) : 0.0
@@ -1126,7 +1184,7 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
             pT3    := t3
             if showDraw
                 // התיבה מתחילה ברגע שהלימיט נשלח (לא בזמן שה-FVG נוצר) — נגיעה לפני התיבה = הפקודה עוד לא הייתה בשוק
-                string fTxt = "לימיט " + str.tostring(lvl, format.mintick) + " · " + str.tostring(qty) + " חוזים · FVG מ-" + str.format_time(fT, "HH:mm", tz)
+                string fTxt = "לימיט " + str.tostring(lvl, format.mintick) + " · " + str.tostring(qty) + " חוזים · FVG מ-" + str.format_time(fT, "HH:mm", tz) + (nz(stStopRef, stSwing) != stSwing ? " · סטופ מבנה " + str.tostring(sl, format.mintick) : "")
                 if na(bxFvg) or bxArm != stArmT
                     bxT0  := time
                     bxFvg := box.new(left = bxT0, top = fTop, right = time, bottom = fBot, xloc = xloc.bar_time, bgcolor = color.new(color.orange, 80), border_color = color.new(color.orange, 40))
@@ -1187,4 +1245,4 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
-    f_row(tbl, 20, "גרסת קוד", "v33", color.yellow)
+    f_row(tbl, 20, "גרסת קוד", "v34", color.yellow)
