@@ -690,7 +690,7 @@ if bearSMT and allowShort and isFlat
         line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.red, width = 2)
         label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
         lnCisd := line.new(x1 = stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
-        if stStage == 2
+        if chkB < stCisd
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
 
 if bullSMT and allowLong and isFlat
@@ -719,7 +719,7 @@ if bullSMT and allowLong and isFlat
         line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.lime, width = 2)
         label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
         lnCisd := line.new(x1 = stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
-        if stStage == 2
+        if chkU > stCisd
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
 
 // תווית אבחון: למה סטאפ הסתיים בלי עסקה
