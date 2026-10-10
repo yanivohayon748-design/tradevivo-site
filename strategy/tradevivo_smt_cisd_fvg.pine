@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v26", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v27", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -860,10 +860,22 @@ bool allowShort = dirMode != DIR_LONG
 bool goBear = useLive ? lvBear : bearSMT
 bool goBull = useLive ? lvBull : bullSMT
 
-// סטאפ פעיל לא מוחלף ב-SMT חדש באותו כיוון, וסטאפ שכבר עבר CISD לא מוחלף בכלל
-if goBear and allowShort and isFlat and (stStage == 0 or (stStage == 1 and stDir == 1))
+// סטאפ פעיל לא מוחלף ב-SMT חדש באותו כיוון, וסטאפ שכבר עבר CISD לא מוחלף בכלל.
+// SMT הפוך מחליף סטאפ שממתין ל-CISD רק אם הקיצון שלו חדש יותר, ורק אם ה-CISD של הסטאפ הקיים לא נשבר בנר הזה
+// (נר ששובר CISD לשורט עושה שפל חדש — ובלי זה הוא היה "מייצר" SMT לונג שדורס את השורט).
+float cNow   = cisdMode == CISD_1M ? close : cisdMode == CISD_BODY ? mC : stDir == -1 ? mL : mH
+bool  brkNow = stStage == 1 and (cisdMode == CISD_1M or newHtf) and time != stArmT and not na(cNow) and (stDir == -1 ? cNow < stCisd : cNow > stCisd)
+int   newBT  = useLive ? lvBSwT : mPT
+int   newUT  = useLive ? lvUSwT : mPT
+f_replLabel(string txt) =>
+    if showDraw and showFail
+        label.new(bar_index, stDir == -1 ? high : low, txt, style = stDir == -1 ? label.style_label_down : label.style_label_up, color = color.new(color.gray, 15), textcolor = color.white, size = size.small)
+    0
+
+if goBear and allowShort and isFlat and (stStage == 0 or (stStage == 1 and stDir == 1 and not brkNow and newBT > stSwingT))
     if stStage > 0
         nRepl += 1
+        f_replLabel("הוחלף ב-SMT שורט")
         if not showFail
             f_clearSetup()
     nSmt     += 1
@@ -896,9 +908,10 @@ if goBear and allowShort and isFlat and (stStage == 0 or (stStage == 1 and stDir
         if not na(chkB) and chkB < stCisd
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
 
-if goBull and allowLong and isFlat and (stStage == 0 or (stStage == 1 and stDir == -1))
+if goBull and allowLong and isFlat and (stStage == 0 or (stStage == 1 and stDir == -1 and not brkNow and newUT > stSwingT))
     if stStage > 0
         nRepl += 1
+        f_replLabel("הוחלף ב-SMT לונג")
         if not showFail
             f_clearSetup()
     nSmt     += 1
@@ -1133,4 +1146,4 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
-    f_row(tbl, 20, "גרסת קוד", "v26", color.yellow)
+    f_row(tbl, 20, "גרסת קוד", "v27", color.yellow)
