@@ -35,6 +35,9 @@ string WIN_CHART  = "נרות דקה"
 string WIN_OFF    = "ללא הגבלה"
 string WHY_NOFVG  = "אין FVG מתאים בחלון שאחרי ה-SMT"
 string WHY_SESS   = "מחוץ לסשן"
+string RND_NEAR   = "לקרוב ביותר (3.5 → 4, 2.4 → 2)"
+string RND_UP     = "תמיד למעלה (2.1 → 3)"
+string RND_DOWN   = "תמיד למטה (2.9 → 2)"
 
 string G1 = "כללי"
 string G2 = "SMT (טיימפריים המודל)"
@@ -75,7 +78,8 @@ usePD     = input.bool(false, "רק FVG ב-Premium / Discount של התנועה"
 entryWait = input.int(60, "זמן מקס' לכניסה אחרי CISD (דקות)", minval = 1, group = G4)
 cancelTgt = input.bool(true, "ביטול אם המחיר הגיע ליעד לפני הכניסה", group = G4)
 
-riskUsd  = input.float(200, "סיכון קבוע לעסקה ($)", minval = 1, group = G5)
+riskUsd  = input.float(250, "סיכון קבוע לעסקה ($)", minval = 1, group = G5)
+qtyRound = input.string(RND_NEAR, "עיגול מספר החוזים", options = [RND_NEAR, RND_UP, RND_DOWN], group = G5, tooltip = "מספר החוזים = סיכון $ ÷ (מרחק הסטופ × שווי נקודה). כשיוצא מספר לא שלם, כך הוא מעוגל. עיגול למעלה יכול לסכן קצת יותר מהסכום שהוגדר.")
 maxQty   = input.int(10, "מקסימום חוזים", minval = 1, group = G5)
 slBuf    = input.int(2, "מרווח סטופ מעבר לשיא/שפל (טיקים)", minval = 0, group = G5)
 slMinT   = input.int(8, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
@@ -779,7 +783,8 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
         float sl    = stSwing - stDir * slBuf * syminfo.mintick
         float risk  = math.abs(lvl - sl)
         float rTick = risk / syminfo.mintick
-        int   qty   = risk > 0 ? math.min(maxQty, int(math.floor(riskUsd / (risk * syminfo.pointvalue)))) : 0
+        float rawQ  = risk > 0 ? riskUsd / (risk * syminfo.pointvalue) : 0.0
+        int   qty   = math.min(maxQty, qtyRound == RND_UP ? int(math.ceil(rawQ)) : qtyRound == RND_DOWN ? int(math.floor(rawQ)) : int(math.round(rawQ)))
         int   q1    = math.min(qty, int(math.round(qty * tp1Pct / 100)))
         int   q2    = math.min(qty - q1, int(math.round(qty * tp2Pct / 100)))
         int   q3    = qty - q1 - q2
