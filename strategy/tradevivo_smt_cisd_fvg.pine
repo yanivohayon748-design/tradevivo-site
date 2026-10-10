@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v34", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v35", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -121,6 +121,8 @@ maxWeek  = input.int(100, "מקס' עסקאות לשבוע", minval = 1, group =
 maxMonth = input.int(400, "מקס' עסקאות לחודש", minval = 1, group = G8)
 maxLoss  = input.float(0, "מקס' הפסד יומי ($)  0 = ללא", minval = 0, group = G8)
 maxProf  = input.float(0, "מקס' רווח יומי ($)  0 = ללא", minval = 0, group = G8)
+maxWinD  = input.int(0, "מקס' עסקאות מנצחות ביום  0 = ללא", minval = 0, group = G8, tooltip = "אחרי X עסקאות ברווח באותו יום — לא נכנסים יותר עד מחר. עסקה עם יציאות חלקיות נספרת פעם אחת, לפי הרווח הכולל שלה.")
+maxLossD = input.int(0, "מקס' עסקאות מפסידות ביום  0 = ללא", minval = 0, group = G8, tooltip = "אחרי X עסקאות בהפסד באותו יום — לא נכנסים יותר עד מחר. עסקה שנסגרה באפס (ברייק-איבן) לא נספרת.")
 closeLim = input.bool(true, "סגור פוזיציה פתוחה כשמגיעים למגבלה היומית", group = G8)
 
 tz   = input.string("Asia/Jerusalem", "אזור זמן (שעון ישראל)", group = G9, tooltip = "כל שעות הסשנים לפי אזור הזמן הזה. Asia/Jerusalem = שעון ישראל, America/New_York = שעון ניו יורק.")
@@ -137,6 +139,7 @@ s5   = input.session("1830-2300", "", inline = "s5", group = G9)
 flatEnd = input.bool(false, "סגור פוזיציה בסוף הסשן", group = G9)
 
 showDraw = input.bool(true, "הצג SMT / CISD / FVG על הגרף", group = G10)
+showPos  = input.bool(true, "הצג כלי פוזיציה על כל עסקה", group = G10, tooltip = "כמו כלי הפוזיציה של טריידינג ויו: אדום מהכניסה לסטופ, ירוק מהכניסה ליעד האחרון, מזמן הכניסה עד היציאה. הסטופ המצויר הוא הסטופ ההתחלתי.")
 showFail = input.bool(false, "הצג גם SMT-ים שלא הגיעו ל-CISD", group = G10, tooltip = "כבוי: על הגרף נשארים רק סטאפים שעברו CISD — פחות רעש. המונים בטבלה סופרים הכל.")
 showTbl  = input.bool(true, "הצג טבלת סטטוס", group = G10)
 
@@ -564,9 +567,13 @@ var int   cWeek    = 0
 var int   cMonth   = 0
 var float dayStart = 0.0
 var bool  dayLock  = false
+var int   dWin     = 0
+var int   dLoss    = 0
 
 if timeframe.change("D")
     cDay     := 0
+    dWin     := 0
+    dLoss    := 0
     dayStart := strategy.netprofit
     dayLock  := false
 if timeframe.change("W")
@@ -811,6 +818,17 @@ if newEntry
     stDir   := 0
     alert(str.format("{0} FILLED @ {1} | SL {2} | Qty {3}", tDir == 1 ? "LONG" : "SHORT", str.tostring(tEntry, format.mintick), str.tostring(tStop, format.mintick), tQty), alert.freq_once_per_bar_close)
 
+// כלי פוזיציה על כל עסקה: אדום = כניסה→סטופ, ירוק = כניסה→יעד אחרון
+var box pbRed = na
+var box pbGrn = na
+if newEntry and showPos
+    float lastTg = tQ3 > 0 ? tT3 : tQ2 > 0 ? tT2 : tT1
+    pbRed := box.new(left = lastEntryT, top = math.max(tEntry, tStop), right = time, bottom = math.min(tEntry, tStop), xloc = xloc.bar_time, bgcolor = color.new(color.red, 75), border_color = color.new(color.red, 40))
+    pbGrn := box.new(left = lastEntryT, top = math.max(tEntry, lastTg), right = time, bottom = math.min(tEntry, lastTg), xloc = xloc.bar_time, bgcolor = color.new(color.teal, 75), border_color = color.new(color.teal, 40))
+if not na(pbRed) and (strategy.position_size != 0 or strategy.position_size[1] != 0) and not newEntry
+    box.set_right(pbRed, time)
+    box.set_right(pbGrn, time)
+
 // ───────────── ניהול עסקה: יעדים חלקיים + קידום סטופ ─────────────
 if strategy.position_size != 0 and tDir != 0
     int absPos = int(math.abs(strategy.position_size))
@@ -835,6 +853,17 @@ if strategy.position_size == 0 and not newEntry
     tDir := 0
 
 // ───────────── מגבלה יומית + סוף סשן ─────────────
+// עסקאות מנצחות / מפסידות היום: כל פוזיציה נספרת פעם אחת כשהיא נסגרת, לפי הרווח הכולל שלה (כולל יציאות חלקיות)
+var int   countedCl = 0
+var float npMark    = 0.0
+if strategy.position_size == 0 and strategy.closedtrades > countedCl
+    float pnl = strategy.netprofit - npMark
+    dWin  += pnl > 0 ? 1 : 0
+    dLoss += pnl < 0 ? 1 : 0
+    countedCl := strategy.closedtrades
+    npMark    := strategy.netprofit
+if (maxWinD > 0 and dWin >= maxWinD) or (maxLossD > 0 and dLoss >= maxLossD)
+    dayLock := true
 float dayReal = strategy.netprofit - dayStart
 float dayTot  = dayReal + strategy.openprofit
 bool  lossHit = maxLoss > 0 and dayTot <= -maxLoss
@@ -1221,7 +1250,7 @@ f_row(table t, int r, string k, string v, color c) =>
     table.cell(t, 0, r, k, text_color = color.silver, text_size = size.small, text_halign = text.align_right)
     table.cell(t, 1, r, v, text_color = c, text_size = size.small)
 
-var table tbl = table.new(position.top_right, 2, 21, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
+var table tbl = table.new(position.top_right, 2, 22, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
 if showTbl and barstate.islast
     string side   = stDir == -1 ? "שורט" : "לונג"
     string status = strategy.position_size > 0 ? "בעסקת לונג" : strategy.position_size < 0 ? "בעסקת שורט" : stStage == 1 ? side + ": ממתין ל-CISD" : stStage == 2 ? (placed ? side + ": לימיט ב-FVG" : side + ": " + (whyNow != "" ? whyNow : "מחפש FVG")) : "מחפש SMT"
@@ -1245,4 +1274,5 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
-    f_row(tbl, 20, "גרסת קוד", "v34", color.yellow)
+    f_row(tbl, 20, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
+    f_row(tbl, 21, "גרסת קוד", "v35", color.yellow)
