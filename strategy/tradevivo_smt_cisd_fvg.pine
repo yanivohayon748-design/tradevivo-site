@@ -143,6 +143,7 @@ type Piv
     bool  used    = false
     float usedExt
     bool  dead    = false
+    bool  again   = false
 
 // ───────────── נתוני המודל (5 דק') — ללא ריפיינט ─────────────
 // כל הערכים מוחזרים מהנר הסגור האחרון של טיימפריים המודל ([1] + lookahead_on)
@@ -418,6 +419,13 @@ if useLive and newHtf
         float bestPx = na
         for i = 0 to array.size(pvHs) - 1
             Piv p = array.get(pvHs, i)
+            bool active = stStage > 0 and stDir == -1 and stPrevT == p.t
+            if p.used and not active
+                // הסטאפ הקודם מול השיא הזה נגמר בלי עסקה — מחפשים מולו שיא חדש
+                p.used  := false
+                p.again := true
+                p.ext   := na
+                p.extT  := na
             if na(p.ext) or mH > p.ext
                 p.cis  := p.run
                 p.ext  := mH
@@ -433,8 +441,7 @@ if useLive and newHtf
             bool typeA  = (sw1 or sw2) and not mainSw
             bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
             bool tooOld = mT - p.t > maxDist * tfMs
-            bool active = stStage > 0 and stDir == -1 and stPrevT == p.t
-            bool fresh  = not p.used or (p.ext > p.usedExt and not active)
+            bool fresh  = not p.used and (not p.again or mH < p.ext)
             p.dead := tooOld or (mainSw and (weak or ((not on1 or sw1) and (not on2 or sw2))))
             if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
                 if bestI < 0 or p.px > bestPx
@@ -462,6 +469,12 @@ if useLive and newHtf
         float bestPx = na
         for i = 0 to array.size(pvLs) - 1
             Piv p = array.get(pvLs, i)
+            bool active = stStage > 0 and stDir == 1 and stPrevT == p.t
+            if p.used and not active
+                p.used  := false
+                p.again := true
+                p.ext   := na
+                p.extT  := na
             if na(p.ext) or mL < p.ext
                 p.cis  := p.run
                 p.ext  := mL
@@ -477,8 +490,7 @@ if useLive and newHtf
             bool typeA  = (sw1 or sw2) and not mainSw
             bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
             bool tooOld = mT - p.t > maxDist * tfMs
-            bool active = stStage > 0 and stDir == 1 and stPrevT == p.t
-            bool fresh  = not p.used or (p.ext < p.usedExt and not active)
+            bool fresh  = not p.used and (not p.again or mL > p.ext)
             p.dead := tooOld or (mainSw and (weak or ((not on1 or sw1) and (not on2 or sw2))))
             if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
                 if bestI < 0 or p.px < bestPx
@@ -820,6 +832,10 @@ f_winEnd(float price, int swingT, bool isHigh) =>
         r := (na(t1m) ? swingT : t1m) + (fvgWin + 1) * barMs
     r
 
+// טקסט תווית ה-SMT: מול איזה שיא/שפל ומה רמת ה-CISD
+f_smtTxt() =>
+    "SMT מול " + str.tostring(stPrev, format.mintick) + " (" + str.format_time(stPrevT, "HH:mm", tz) + ")\nCISD " + str.tostring(stCisd, format.mintick)
+
 // ───────────── סטאפ: SMT → CISD ─────────────
 bool isFlat     = strategy.position_size == 0
 bool allowLong  = dirMode != DIR_SHORT
@@ -857,7 +873,7 @@ if goBear and allowShort and isFlat and (stStage == 0 or (stStage == 1 and stDir
         stCisdT := time
     if showDraw
         lnSmt  := line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.red, width = 2)
-        lbSmt  := label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
+        lbSmt  := label.new(x = stSwingT, y = stSwing, text = f_smtTxt(), xloc = xloc.bar_time, style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
         lnCisd := line.new(x1 = stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
         if not na(chkB) and chkB < stCisd
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
@@ -890,7 +906,7 @@ if goBull and allowLong and isFlat and (stStage == 0 or (stStage == 1 and stDir 
         stCisdT := time
     if showDraw
         lnSmt  := line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.lime, width = 2)
-        lbSmt  := label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
+        lbSmt  := label.new(x = stSwingT, y = stSwing, text = f_smtTxt(), xloc = xloc.bar_time, style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
         lnCisd := line.new(x1 = stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
         if not na(chkU) and chkU > stCisd
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
@@ -915,6 +931,7 @@ if stStage > 0 and isFlat
             if showDraw
                 line.set_xy2(lnSmt, stSwingT, stSwing)
                 label.set_xy(lbSmt, stSwingT, stSwing)
+                label.set_text(lbSmt, f_smtTxt())
                 line.set_y1(lnCisd, stCisd)
                 line.set_y2(lnCisd, stCisd)
         stRun := stDir == -1 ? math.min(stRun, mL) : math.max(stRun, mH)
@@ -939,7 +956,7 @@ if stStage > 0 and isFlat
                 nCisd   += 1
                 if showDraw
                     label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
-            else if time - stArmT >= cisdWait * tfMs
+            else if time - math.max(stArmT, stSwingT) >= cisdWait * tfMs
                 f_endLabel(stDir, "בוטל: אין שבירת CISD בזמן")
                 nCxCisd += 1
                 stStage := 0
