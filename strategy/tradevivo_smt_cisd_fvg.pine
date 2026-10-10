@@ -60,6 +60,8 @@ cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)",
 fvgPick   = input.string(PICK_NEAR, "איזה FVG", options = [PICK_NEAR, PICK_SWING, PICK_BIG], group = G4)
 fvgEdge   = input.string(EDGE_NEAR, "נקודת כניסה ב-FVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G4)
 fvgMinT   = input.int(2, "גודל FVG מינ' (טיקים)", minval = 1, group = G4)
+mitType   = input.string("Close", "Mitigation Type", options = ["Close", "Wick"], inline = "mit", group = G4)
+mitPct    = input.float(50, "Mitigation %", minval = 0, maxval = 100, inline = "mit", group = G4, tooltip = "כמו ב-Panda Zones: FVG נפסל כשנר נסגר (Close) או נוגע בפתיל (Wick) מעבר לאחוז הזה מגודל ה-FVG. 50 = חצי, 100 = הקצה הרחוק.")
 usePD     = input.bool(false, "רק FVG ב-Premium / Discount של התנועה", group = G4, tooltip = "בשורט: נקודת הכניסה מעל 50% של התנועה משיא ה-SMT עד השפל שאחריו. בלונג: מתחת ל-50%.")
 entryWait = input.int(60, "זמן מקס' לכניסה אחרי CISD (דקות)", minval = 1, group = G4)
 cancelTgt = input.bool(true, "ביטול אם המחיר הגיע ליעד לפני הכניסה", group = G4)
@@ -350,16 +352,23 @@ var array<float> uTop = array.new<float>()
 var array<float> uBot = array.new<float>()
 var array<int>   uT   = array.new<int>()
 
-// FVG שנסגר בגוף נר מעבר לקצה הרחוק — נפסל
+// Mitigation כמו ב-Panda Zones: FVG נפסל כשהמחיר (סגירה או פתיל) עובר את אחוז ה-Mitigation שלו
+float mitF   = mitPct / 100
+float mitUp  = mitType == "Close" ? close : high
+float mitDn  = mitType == "Close" ? close : low
 if array.size(bTop) > 0
     for i = array.size(bTop) - 1 to 0
-        if close > array.get(bTop, i)
+        float t = array.get(bTop, i)
+        float b = array.get(bBot, i)
+        if mitUp > b + (t - b) * mitF
             array.remove(bTop, i)
             array.remove(bBot, i)
             array.remove(bT, i)
 if array.size(uTop) > 0
     for i = array.size(uTop) - 1 to 0
-        if close < array.get(uBot, i)
+        float t = array.get(uTop, i)
+        float b = array.get(uBot, i)
+        if mitDn < t - (t - b) * mitF
             array.remove(uTop, i)
             array.remove(uBot, i)
             array.remove(uT, i)
