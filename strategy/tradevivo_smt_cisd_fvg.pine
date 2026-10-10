@@ -140,6 +140,9 @@ type Piv
     float x2
     float run
     float cis
+    bool  used    = false
+    float usedExt
+    bool  dead    = false
 
 // ───────────── נתוני המודל (5 דק') — ללא ריפיינט ─────────────
 // כל הערכים מוחזרים מהנר הסגור האחרון של טיימפריים המודל ([1] + lookahead_on)
@@ -345,6 +348,30 @@ if newHtf
 
 bool useLive = smtEngine == ENG_LIVE
 
+// ───────────── מצב הסטאפ ─────────────
+// סטאפ: 0 = אין, 1 = ממתין ל-CISD, 2 = ממתין לכניסה ב-FVG
+var int   stDir    = 0
+var int   stStage  = 0
+var float stSwing  = na
+var int   stSwingT = na
+var float stPrev   = na
+var int   stPrevT  = na
+var float stCisd   = na
+var int   stArmT   = na
+var int   stCisdT  = na
+var float stExt    = na
+var int   stWinEnd = na
+var bool  stLive   = false
+var int   stLType  = 0
+var float stRun    = na
+var line  lnSmt    = na
+var label lbSmt    = na
+var line  lnCisd   = na
+var box   bxFvg    = na
+var label lbFvg    = na
+var int   bxArm    = na
+
+
 // ───────────── SMT חי ─────────────
 // נשמרים השיאים/שפלים האחרונים (פיבוטים של 5 דק') של הנכס שלי, יחד עם השיא/שפל של נכס ההשוואה באותו זמן.
 // SMT לשורט: נכס ההשוואה עבר את השיא שלו והנכס שלי עדיין מתחת לשיא שלו (ולהפך ללונג).
@@ -376,17 +403,20 @@ if useLive and newHtf
     float k2L = c2T == mT ? c2L5 : na
     if not na(mPH)
         float r0 = f_between(mPT, mT, true)
-        array.push(pvHs, Piv.new(mPH, mPT, c1T == mT ? c1HiW : na, c2T == mT ? c2HiW : na, na, na, na, na, r0, r0))
+        array.push(pvHs, Piv.new(px = mPH, t = mPT, c1 = c1T == mT ? c1HiW : na, c2 = c2T == mT ? c2HiW : na, run = r0, cis = r0))
         if array.size(pvHs) > 6
             array.shift(pvHs)
     if not na(mPL)
         float r1 = f_between(mPT, mT, false)
-        array.push(pvLs, Piv.new(mPL, mPT, c1T == mT ? c1LoW : na, c2T == mT ? c2LoW : na, na, na, na, na, r1, r1))
+        array.push(pvLs, Piv.new(px = mPL, t = mPT, c1 = c1T == mT ? c1LoW : na, c2 = c2T == mT ? c2LoW : na, run = r1, cis = r1))
         if array.size(pvLs) > 6
             array.shift(pvLs)
-    // שיאים → SMT לשורט
+    // שיאים → SMT לשורט. אם כמה שיאים קודמים נותנים SMT — נבחר הגבוה ביותר (הנזילות המשמעותית).
+    // אותו שיא קודם יכול לתת SMT שוב, אם נוצר שיא חדש וגבוה יותר (אבל עדיין מתחתיו) אחרי שהסטאפ הקודם נגמר.
     if array.size(pvHs) > 0
-        for i = array.size(pvHs) - 1 to 0
+        int   bestI  = -1
+        float bestPx = na
+        for i = 0 to array.size(pvHs) - 1
             Piv p = array.get(pvHs, i)
             if na(p.ext) or mH > p.ext
                 p.cis  := p.run
@@ -403,22 +433,34 @@ if useLive and newHtf
             bool typeA  = (sw1 or sw2) and not mainSw
             bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
             bool tooOld = mT - p.t > maxDist * tfMs
-            bool fire   = not lvBear and not tooOld and (typeA or typeB) and not na(p.cis)
-            if fire
-                lvBear   := true
-                lvBSw    := p.ext
-                lvBSwT   := p.extT
-                lvBPrev  := p.px
-                lvBPrevT := p.t
-                lvBCisd  := p.cis
-                lvBRun   := p.run
-                lvBType  := typeA ? 1 : 2
-            bool allSw = mainSw and (not on1 or sw1) and (not on2 or sw2)
-            if fire or tooOld or allSw
+            bool active = stStage > 0 and stDir == -1 and stPrevT == p.t
+            bool fresh  = not p.used or (p.ext > p.usedExt and not active)
+            p.dead := tooOld or (mainSw and (weak or ((not on1 or sw1) and (not on2 or sw2))))
+            if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
+                if bestI < 0 or p.px > bestPx
+                    bestI  := i
+                    bestPx := p.px
+        if bestI >= 0
+            Piv q = array.get(pvHs, bestI)
+            lvBear    := true
+            lvBSw     := q.ext
+            lvBSwT    := q.extT
+            lvBPrev   := q.px
+            lvBPrevT  := q.t
+            lvBCisd   := q.cis
+            lvBRun    := q.run
+            lvBType   := q.ext > q.px ? 2 : 1
+            q.used    := true
+            q.usedExt := q.ext
+        for i = array.size(pvHs) - 1 to 0
+            Piv d = array.get(pvHs, i)
+            if d.dead
                 array.remove(pvHs, i)
-    // שפלים → SMT ללונג
+    // שפלים → SMT ללונג (אותו דבר הפוך: נבחר השפל הנמוך ביותר)
     if array.size(pvLs) > 0
-        for i = array.size(pvLs) - 1 to 0
+        int   bestI  = -1
+        float bestPx = na
+        for i = 0 to array.size(pvLs) - 1
             Piv p = array.get(pvLs, i)
             if na(p.ext) or mL < p.ext
                 p.cis  := p.run
@@ -435,18 +477,28 @@ if useLive and newHtf
             bool typeA  = (sw1 or sw2) and not mainSw
             bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
             bool tooOld = mT - p.t > maxDist * tfMs
-            bool fire   = not lvBull and not tooOld and (typeA or typeB) and not na(p.cis)
-            if fire
-                lvBull   := true
-                lvUSw    := p.ext
-                lvUSwT   := p.extT
-                lvUPrev  := p.px
-                lvUPrevT := p.t
-                lvUCisd  := p.cis
-                lvURun   := p.run
-                lvUType  := typeA ? 1 : 2
-            bool allSw = mainSw and (not on1 or sw1) and (not on2 or sw2)
-            if fire or tooOld or allSw
+            bool active = stStage > 0 and stDir == 1 and stPrevT == p.t
+            bool fresh  = not p.used or (p.ext < p.usedExt and not active)
+            p.dead := tooOld or (mainSw and (weak or ((not on1 or sw1) and (not on2 or sw2))))
+            if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
+                if bestI < 0 or p.px < bestPx
+                    bestI  := i
+                    bestPx := p.px
+        if bestI >= 0
+            Piv q = array.get(pvLs, bestI)
+            lvBull    := true
+            lvUSw     := q.ext
+            lvUSwT    := q.extT
+            lvUPrev   := q.px
+            lvUPrevT  := q.t
+            lvUCisd   := q.cis
+            lvURun    := q.run
+            lvUType   := q.ext < q.px ? 2 : 1
+            q.used    := true
+            q.usedExt := q.ext
+        for i = array.size(pvLs) - 1 to 0
+            Piv d = array.get(pvLs, i)
+            if d.dead
                 array.remove(pvLs, i)
 
 // ───────────── סשנים ─────────────
@@ -618,28 +670,6 @@ f_cancelSide(int dir) =>
     0
 
 // ───────────── מצב ─────────────
-// סטאפ: 0 = אין, 1 = ממתין ל-CISD, 2 = ממתין לכניסה ב-FVG
-var int   stDir    = 0
-var int   stStage  = 0
-var float stSwing  = na
-var int   stSwingT = na
-var float stPrev   = na
-var int   stPrevT  = na
-var float stCisd   = na
-var int   stArmT   = na
-var int   stCisdT  = na
-var float stExt    = na
-var int   stWinEnd = na
-var bool  stLive   = false
-var int   stLType  = 0
-var float stRun    = na
-var line  lnSmt    = na
-var label lbSmt    = na
-var line  lnCisd   = na
-var box   bxFvg    = na
-var label lbFvg    = na
-var int   bxArm    = na
-
 // פקודה ממתינה
 var int   pDir   = 0
 var float pEntry = na
