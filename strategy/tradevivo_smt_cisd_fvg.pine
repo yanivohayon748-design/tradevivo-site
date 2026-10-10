@@ -67,7 +67,7 @@ cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)",
 fvgPick   = input.string(PICK_MID, "איזה FVG", options = [PICK_MID, PICK_SWING, PICK_NEAR, PICK_BIG], group = G4, tooltip = "מבין ה-FVG-ים שנוצרו בתנועה מהשיא (בשורט) או מהשפל (בלונג):\nהאמצעי: עם 3 FVG-ים בוחר את האמצעי, עם 2 את העליון (בשורט).\nהעליון ביותר: הכי קרוב לשיא/שפל של ה-SMT.\nהקרוב למחיר: הראשון שהמחיר יגיע אליו.")
 fvgEdge   = input.string(EDGE_NEAR, "נקודת כניסה ב-FVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G4)
 fvgWin    = input.int(4, "FVG רק בתוך X נרות אחרי נר ה-SMT", minval = 1, group = G4, tooltip = "ה-FVG של הכניסה חייב להיווצר בנר של ה-SMT או ב-X הנרות שאחריו.")
-fvgWinTf  = input.string(WIN_MODEL, "סוג הנרות לחלון", options = [WIN_MODEL, WIN_CHART, WIN_OFF], group = G4, tooltip = "נרות 5 דק': X נרות של 5 דקות אחרי נר ה-SMT.\nנרות דקה: X נרות של דקה אחרי נר הדקה שעשה את השיא/שפל.")
+fvgWinTf  = input.string(WIN_CHART, "סוג הנרות לחלון", options = [WIN_MODEL, WIN_CHART, WIN_OFF], group = G4, tooltip = "נרות 5 דק': X נרות של 5 דקות אחרי נר ה-SMT.\nנרות דקה: X נרות של דקה אחרי נר הדקה שעשה את השיא/שפל.")
 fvgMinT   = input.int(2, "גודל FVG מינ' (טיקים)", minval = 1, group = G4)
 mitType   = input.string("Close", "Mitigation Type", options = ["Close", "Wick"], inline = "mit", group = G4)
 mitPct    = input.float(50, "Mitigation %", minval = 0, maxval = 100, inline = "mit", group = G4, tooltip = "כמו ב-Panda Zones: FVG נפסל כשנר נסגר (Close) או נוגע בפתיל (Wick) מעבר לאחוז הזה מגודל ה-FVG. 50 = חצי, 100 = הקצה הרחוק.")
