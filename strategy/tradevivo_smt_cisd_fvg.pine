@@ -30,6 +30,11 @@ string PICK_MID   = "האמצעי"
 string EDGE_NEAR  = "קצה קרוב"
 string EDGE_MID   = "אמצע (50%)"
 string EDGE_FAR   = "קצה רחוק"
+string WIN_MODEL  = "נרות של טיימפריים המודל (5 דק')"
+string WIN_CHART  = "נרות דקה"
+string WIN_OFF    = "ללא הגבלה"
+string WHY_NOFVG  = "אין FVG מתאים בחלון שאחרי ה-SMT"
+string WHY_SESS   = "מחוץ לסשן"
 
 string G1 = "כללי"
 string G2 = "SMT (טיימפריים המודל)"
@@ -61,6 +66,8 @@ cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)",
 
 fvgPick   = input.string(PICK_MID, "איזה FVG", options = [PICK_MID, PICK_SWING, PICK_NEAR, PICK_BIG], group = G4, tooltip = "מבין ה-FVG-ים שנוצרו בתנועה מהשיא (בשורט) או מהשפל (בלונג):\nהאמצעי: עם 3 FVG-ים בוחר את האמצעי, עם 2 את העליון (בשורט).\nהעליון ביותר: הכי קרוב לשיא/שפל של ה-SMT.\nהקרוב למחיר: הראשון שהמחיר יגיע אליו.")
 fvgEdge   = input.string(EDGE_NEAR, "נקודת כניסה ב-FVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G4)
+fvgWin    = input.int(4, "FVG רק בתוך X נרות אחרי נר ה-SMT", minval = 1, group = G4, tooltip = "ה-FVG של הכניסה חייב להיווצר בנר של ה-SMT או ב-X הנרות שאחריו.")
+fvgWinTf  = input.string(WIN_MODEL, "סוג הנרות לחלון", options = [WIN_MODEL, WIN_CHART, WIN_OFF], group = G4, tooltip = "נרות 5 דק': X נרות של 5 דקות אחרי נר ה-SMT.\nנרות דקה: X נרות של דקה אחרי נר הדקה שעשה את השיא/שפל.")
 fvgMinT   = input.int(2, "גודל FVG מינ' (טיקים)", minval = 1, group = G4)
 mitType   = input.string("Close", "Mitigation Type", options = ["Close", "Wick"], inline = "mit", group = G4)
 mitPct    = input.float(50, "Mitigation %", minval = 0, maxval = 100, inline = "mit", group = G4, tooltip = "כמו ב-Panda Zones: FVG נפסל כשנר נסגר (Close) או נוגע בפתיל (Wick) מעבר לאחוז הזה מגודל ה-FVG. 50 = חצי, 100 = הקצה הרחוק.")
@@ -75,10 +82,10 @@ slMinT   = input.int(8, "סטופ מינימלי (טיקים)", minval = 1, grou
 slMaxT   = input.int(1000, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
 
 tp1RR  = input.float(1.0, "TP1 — RR", minval = 0.1, step = 0.1, inline = "tp1", group = G6)
-tp1Pct = input.float(50, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
+tp1Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
 tp2RR  = input.float(2.0, "TP2 — RR", minval = 0.1, step = 0.1, inline = "tp2", group = G6)
-tp2Pct = input.float(25, "% לסגירה", minval = 0, maxval = 100, inline = "tp2", group = G6)
-tp3RR  = input.float(3.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6, tooltip = "TP3 סוגר את כל מה שנשאר אחרי TP1 ו-TP2. ליעד אחד בלבד: TP1 = 100%.")
+tp2Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp2", group = G6)
+tp3RR  = input.float(3.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6, tooltip = "TP3 סוגר את כל מה שנשאר אחרי TP1 ו-TP2. ברירת המחדל: 0% ב-TP1 ו-TP2, כלומר כל הפוזיציה יוצאת ב-TP3.")
 
 be1On = input.bool(true, "שלב 1", inline = "be1", group = G7)
 be1At = input.float(1.0, "כשמגיעים ל-R", step = 0.1, inline = "be1", group = G7)
@@ -407,7 +414,7 @@ f_lvl(int dir, float t, float b) =>
 // בחירת FVG לכניסה מבין אלה שנוצרו אחרי שיא/שפל ה-SMT.
 // הבחירה ננעלת: היא מתעדכנת רק כשנוצר FVG חדש בתנועה (או כשה-FVG הנבחר נפסל),
 // ולא זזה כשהמחיר חוזר ופוסל את ה-FVG-ים הקרובים אליו.
-f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing, int swingT, float ext, int lockedT, bool repick) =>
+f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing, int swingT, int winEnd, float ext, int lockedT, bool repick) =>
     int n = array.size(tops)
     int bestI = na
     if not repick and not na(lockedT) and n > 0
@@ -425,7 +432,8 @@ f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing
             float t   = array.get(tops, i)
             float b   = array.get(bots, i)
             float lvl = f_lvl(dir, t, b)
-            bool inLeg = array.get(ts, i) >= swingT and (dir == -1 ? t <= swing : b >= swing)
+            int  ft    = array.get(ts, i)
+            bool inLeg = ft >= swingT and (na(winEnd) or ft < winEnd) and (dir == -1 ? t <= swing : b >= swing)
             bool ahead = dir == -1 ? lvl > close : lvl < close
             bool pdOk  = not usePD or (dir == -1 ? lvl >= eq : lvl <= eq)
             if inLeg and ahead and pdOk
@@ -495,6 +503,7 @@ var float stCisd   = na
 var int   stArmT   = na
 var int   stCisdT  = na
 var float stExt    = na
+var int   stWinEnd = na
 var line  lnCisd   = na
 var box   bxFvg    = na
 var int   bxArm    = na
@@ -538,6 +547,7 @@ bool newEntry = lastEntryT > countedT
 
 if newEntry
     countedT := lastEntryT
+    nFilled  += 1
     cSess  += 1
     cDay   += 1
     cWeek  += 1
@@ -598,12 +608,49 @@ if closeLim and (lossHit or profHit)
 if flatEnd and sessIdx != sessIdx[1] and sessIdx[1] > 0 and strategy.position_size != 0
     strategy.close_all(comment = "סוף סשן")
 
+// נר הדקה שעשה את השיא/שפל של ה-SMT (בתוך נר המודל שמתחיל ב-t0)
+f_swingBarTime(float price, int t0, int t1, bool isHigh) =>
+    int res = na
+    for i = 0 to 1500
+        int bt = time[i]
+        if na(bt) or bt < t0
+            break
+        if bt < t1 and (isHigh ? high[i] == price : low[i] == price)
+            res := bt
+    res
+
+// סוף חלון ה-FVG: X נרות אחרי נר ה-SMT
+f_winEnd(float price, int swingT, bool isHigh) =>
+    int r = na
+    if fvgWinTf == WIN_MODEL
+        r := swingT + (fvgWin + 1) * tfMs
+    else if fvgWinTf == WIN_CHART
+        int barMs = timeframe.in_seconds() * 1000
+        int t1m   = f_swingBarTime(price, swingT, swingT + tfMs, isHigh)
+        r := (na(t1m) ? swingT : t1m) + (fvgWin + 1) * barMs
+    r
+
 // ───────────── סטאפ: SMT → CISD ─────────────
+// משפך סטאפים — לאבחון
+var int nSmt      = 0
+var int nCisd     = 0
+var int nFilled   = 0
+var int nRepl     = 0
+var int nCxBeyond = 0
+var int nCxCisd   = 0
+var int nCxWait   = 0
+var int nCxTgt    = 0
+var int nNoFvg    = 0
+var int nOutSess  = 0
+
 bool isFlat     = strategy.position_size == 0
 bool allowLong  = dirMode != DIR_SHORT
 bool allowShort = dirMode != DIR_LONG
 
 if bearSMT and allowShort and isFlat
+    if stStage > 0
+        nRepl += 1
+    nSmt     += 1
     stDir    := -1
     stStage  := 1
     stSwing  := mPH
@@ -613,9 +660,11 @@ if bearSMT and allowShort and isFlat
     stCisd   := smtCisd
     stArmT   := time
     stExt    := mMinL
+    stWinEnd := f_winEnd(mPH, mPT, true)
     if (cisdMode == CISD_BODY ? mMinC : mMinL) < stCisd
         stStage := 2
         stCisdT := time
+        nCisd   += 1
     if showDraw
         line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.red, width = 2)
         label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
@@ -624,6 +673,9 @@ if bearSMT and allowShort and isFlat
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
 
 if bullSMT and allowLong and isFlat
+    if stStage > 0
+        nRepl += 1
+    nSmt     += 1
     stDir    := 1
     stStage  := 1
     stSwing  := mPL
@@ -633,9 +685,11 @@ if bullSMT and allowLong and isFlat
     stCisd   := smtCisd
     stArmT   := time
     stExt    := mMaxH
+    stWinEnd := f_winEnd(mPL, mPT, false)
     if (cisdMode == CISD_BODY ? mMaxC : mMaxH) > stCisd
         stStage := 2
         stCisdT := time
+        nCisd   += 1
     if showDraw
         line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.lime, width = 2)
         label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
@@ -656,6 +710,9 @@ if stStage > 0 and isFlat
     if beyond
         // המחיר עבר את שיא/שפל ה-SMT — הסטאפ בוטל
         f_endLabel(stDir, "בוטל: המחיר עבר את השיא/שפל" + (stStage == 2 and whyNot != "" ? "\n" + whyNot : ""))
+        nCxBeyond += 1
+        nNoFvg    += stStage == 2 and whyNot == WHY_NOFVG ? 1 : 0
+        nOutSess  += stStage == 2 and whyNot == WHY_SESS ? 1 : 0
         stStage := 0
         stDir   := 0
     else if stStage == 1
@@ -665,10 +722,12 @@ if stStage > 0 and isFlat
             if broke
                 stStage := 2
                 stCisdT := time
+                nCisd   += 1
                 if showDraw
                     label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
             else if time - stArmT >= cisdWait * tfMs
                 f_endLabel(stDir, "בוטל: אין שבירת CISD בזמן")
+                nCxCisd += 1
                 stStage := 0
                 stDir   := 0
         if showDraw and not na(lnCisd) and stStage >= 1
@@ -676,6 +735,9 @@ if stStage > 0 and isFlat
     else if stStage == 2
         if time - stCisdT >= entryWait * 60000
             f_endLabel(stDir, "בוטל: עבר זמן הכניסה" + (whyNot != "" ? "\n" + whyNot : ""))
+            nCxWait  += 1
+            nNoFvg   += whyNot == WHY_NOFVG ? 1 : 0
+            nOutSess += whyNot == WHY_SESS ? 1 : 0
             stStage := 0
             stDir   := 0
 
@@ -688,7 +750,7 @@ var int   lockArm    = na
 
 string whyNow = ""
 if strategy.position_size == 0 and stStage == 2 and not canTrade
-    whyNow := not tfOk ? "הגרף לא על דקה" : sessIdx == 0 ? "מחוץ לסשן" : dayLock ? "נעול: מגבלה יומית" : "הגעת למקס' עסקאות"
+    whyNow := not tfOk ? "הגרף לא על דקה" : sessIdx == 0 ? WHY_SESS : dayLock ? "נעול: מגבלה יומית" : "הגעת למקס' עסקאות"
 
 if strategy.position_size == 0 and stStage == 2 and canTrade
     if na(lockArm) or lockArm != stArmT
@@ -699,20 +761,20 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
     float fBot = na
     int   fT   = na
     if stDir == -1
-        [aL, aT, aB, aX] = f_pick(-1, bTop, bBot, bT, stSwing, stSwingT, stExt, lockT, newBearF)
+        [aL, aT, aB, aX] = f_pick(-1, bTop, bBot, bT, stSwing, stSwingT, stWinEnd, stExt, lockT, newBearF)
         lvl  := aL
         fTop := aT
         fBot := aB
         fT   := aX
     else
-        [aL, aT, aB, aX] = f_pick(1, uTop, uBot, uT, stSwing, stSwingT, stExt, lockT, newBullF)
+        [aL, aT, aB, aX] = f_pick(1, uTop, uBot, uT, stSwing, stSwingT, stWinEnd, stExt, lockT, newBullF)
         lvl  := aL
         fTop := aT
         fBot := aB
         fT   := aX
     lockT := fT
     if na(lvl)
-        whyNow := "אין FVG מתאים מעל/מתחת למחיר"
+        whyNow := WHY_NOFVG
     else
         float sl    = stSwing - stDir * slBuf * syminfo.mintick
         float risk  = math.abs(lvl - sl)
@@ -728,6 +790,7 @@ if strategy.position_size == 0 and stStage == 2 and canTrade
         bool  tgtHit = cancelTgt and (stDir == -1 ? stExt <= lastT : stExt >= lastT)
         if tgtHit
             f_endLabel(stDir, "בוטל: המחיר הגיע ליעד לפני הכניסה")
+            nCxTgt += 1
             stStage := 0
             stDir   := 0
         else if qty < 1
@@ -784,7 +847,7 @@ f_row(table t, int r, string k, string v, color c) =>
     table.cell(t, 0, r, k, text_color = color.silver, text_size = size.small, text_halign = text.align_right)
     table.cell(t, 1, r, v, text_color = c, text_size = size.small)
 
-var table tbl = table.new(position.top_right, 2, 8, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
+var table tbl = table.new(position.top_right, 2, 18, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
 if showTbl and barstate.islast
     string side   = stDir == -1 ? "שורט" : "לונג"
     string status = strategy.position_size > 0 ? "בעסקת לונג" : strategy.position_size < 0 ? "בעסקת שורט" : stStage == 1 ? side + ": ממתין ל-CISD" : stStage == 2 ? (placed ? side + ": לימיט ב-FVG" : side + ": " + (whyNow != "" ? whyNow : "מחפש FVG")) : "מחפש SMT"
@@ -796,3 +859,13 @@ if showTbl and barstate.islast
     f_row(tbl, 5, "עסקאות החודש", str.tostring(cMonth) + " / " + str.tostring(maxMonth), color.white)
     f_row(tbl, 6, "מסחר היום", dayLock ? "נעול (מגבלה יומית)" : "פתוח", dayLock ? color.orange : color.lime)
     f_row(tbl, 7, "טיימפריים", tfOk ? "תקין" : "יש להריץ על גרף דקה", tfOk ? color.lime : color.red)
+    f_row(tbl, 8, "── משפך סטאפים ──", "", color.silver)
+    f_row(tbl, 9, "SMT-ים שזוהו", str.tostring(nSmt), color.white)
+    f_row(tbl, 10, "עברו CISD", str.tostring(nCisd), color.white)
+    f_row(tbl, 11, "נכנסו לעסקה", str.tostring(nFilled), color.lime)
+    f_row(tbl, 12, "בוטל: אין CISD בזמן", str.tostring(nCxCisd), color.orange)
+    f_row(tbl, 13, "בוטל: המחיר עבר את השיא/שפל", str.tostring(nCxBeyond), color.orange)
+    f_row(tbl, 14, "בוטל: עבר זמן הכניסה", str.tostring(nCxWait), color.orange)
+    f_row(tbl, 15, "בוטל: הגיע ליעד לפני כניסה", str.tostring(nCxTgt), color.orange)
+    f_row(tbl, 16, "הוחלף ב-SMT חדש", str.tostring(nRepl), color.orange)
+    f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
