@@ -709,6 +709,10 @@ var int nCxWait   = 0
 var int nCxTgt    = 0
 var int nNoFvg    = 0
 var int nOutSess  = 0
+var int nSmtL     = 0
+var int nSmtS     = 0
+var int nFillL    = 0
+var int nFillS    = 0
 
 // ───────────── זיהוי כניסה לעסקה ─────────────
 int lastEntryT = 0
@@ -722,6 +726,8 @@ bool newEntry = lastEntryT > countedT
 if newEntry
     countedT := lastEntryT
     nFilled  += 1
+    nFillL   += pDir == 1 ? 1 : 0
+    nFillS   += pDir == -1 ? 1 : 0
     cSess  += 1
     cDay   += 1
     cWeek  += 1
@@ -826,6 +832,7 @@ if goBear and allowShort and isFlat
     if stStage > 0
         nRepl += 1
     nSmt     += 1
+    nSmtS    += 1
     stDir    := -1
     stStage  := 1
     stSwing  := useLive ? lvBSw : mPH
@@ -834,7 +841,7 @@ if goBear and allowShort and isFlat
     stPrevT  := useLive ? lvBPrevT : smtRefT
     stCisd   := useLive ? lvBCisd : smtCisd
     stArmT   := time
-    stExt    := useLive ? lvBRun : mMinL
+    stExt    := useLive ? low : mMinL
     stRun    := useLive ? lvBRun : mMinL
     stLive   := useLive
     stLType  := lvBType
@@ -858,6 +865,7 @@ if goBull and allowLong and isFlat
     if stStage > 0
         nRepl += 1
     nSmt     += 1
+    nSmtL    += 1
     stDir    := 1
     stStage  := 1
     stSwing  := useLive ? lvUSw : mPL
@@ -866,7 +874,7 @@ if goBull and allowLong and isFlat
     stPrevT  := useLive ? lvUPrevT : smtRefT
     stCisd   := useLive ? lvUCisd : smtCisd
     stArmT   := time
-    stExt    := useLive ? lvURun : mMaxH
+    stExt    := useLive ? high : mMaxH
     stRun    := useLive ? lvURun : mMaxH
     stLive   := useLive
     stLType  := lvUType
@@ -901,6 +909,7 @@ if stStage > 0 and isFlat
             stSwing  := stDir == -1 ? mH : mL
             stSwingT := mT
             stCisd   := stRun
+            stExt    := stDir == -1 ? mL : mH
             stWinEnd := f_winEnd(stSwing, stSwingT, stDir == -1)
             if showDraw
                 line.set_xy2(lnSmt, stSwingT, stSwing)
@@ -1056,7 +1065,7 @@ f_row(table t, int r, string k, string v, color c) =>
     table.cell(t, 0, r, k, text_color = color.silver, text_size = size.small, text_halign = text.align_right)
     table.cell(t, 1, r, v, text_color = c, text_size = size.small)
 
-var table tbl = table.new(position.top_right, 2, 18, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
+var table tbl = table.new(position.top_right, 2, 20, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
 if showTbl and barstate.islast
     string side   = stDir == -1 ? "שורט" : "לונג"
     string status = strategy.position_size > 0 ? "בעסקת לונג" : strategy.position_size < 0 ? "בעסקת שורט" : stStage == 1 ? side + ": ממתין ל-CISD" : stStage == 2 ? (placed ? side + ": לימיט ב-FVG" : side + ": " + (whyNow != "" ? whyNow : "מחפש FVG")) : "מחפש SMT"
@@ -1078,3 +1087,5 @@ if showTbl and barstate.islast
     f_row(tbl, 15, "בוטל: הגיע ליעד לפני כניסה", str.tostring(nCxTgt), color.orange)
     f_row(tbl, 16, "הוחלף ב-SMT חדש", str.tostring(nRepl), color.orange)
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
+    f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
+    f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
