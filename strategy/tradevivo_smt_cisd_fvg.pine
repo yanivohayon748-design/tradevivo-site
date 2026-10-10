@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v29", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v30", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -34,6 +34,8 @@ string PICK_MID   = "האמצעי"
 string EDGE_NEAR  = "קצה קרוב"
 string EDGE_MID   = "אמצע (50%)"
 string EDGE_FAR   = "קצה רחוק"
+string ENT_1M     = "גרף דקה"
+string ENT_MODEL  = "גרף 5 דק' (טיימפריים המודל)"
 string WIN_MODEL  = "נרות של טיימפריים המודל (5 דק')"
 string WIN_CHART  = "נרות דקה"
 string WIN_OFF    = "ללא הגבלה"
@@ -73,6 +75,7 @@ cisdDef  = input.string(CDEF_LOW, "רמת ה-CISD", options = [CDEF_LOW, CDEF_IC
 needCisd = input.bool(true, "חובה לחכות ל-CISD לפני הכניסה", group = G3, tooltip = "כבוי: האסטרטגיה שמה לימיט ב-FVG מיד אחרי ה-SMT, בלי לחכות לשבירת ה-CISD.")
 cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
 
+entryTf   = input.string(ENT_1M, "גרף הכניסה (ה-FVG)", options = [ENT_1M, ENT_MODEL], group = G4, tooltip = "על איזה גרף מחפשים את ה-FVG של הכניסה.\nגרף דקה: FVG מנרות דקה.\nגרף 5 דק': FVG מנרות 5 דקות (החלון של X נרות נספר גם הוא בנרות 5 דקות). הלימיט עדיין מתמלא לפי נרות הדקה, כך שהמילוי מדויק.\nהאסטרטגיה תמיד רצה על גרף דקה.")
 fvgPick   = input.string(PICK_MID, "איזה FVG", options = [PICK_MID, PICK_SWING, PICK_NEAR, PICK_BIG], group = G4, tooltip = "מבין ה-FVG-ים שנוצרו בתנועה מהשיא (בשורט) או מהשפל (בלונג):\nהאמצעי: עם 3 FVG-ים בוחר את האמצעי, עם 2 את העליון (בשורט).\nהעליון ביותר: הכי קרוב לשיא/שפל של ה-SMT.\nהקרוב למחיר: הראשון שהמחיר יגיע אליו.")
 fvgEdge   = input.string(EDGE_NEAR, "נקודת כניסה ב-FVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G4)
 fvgWin    = input.int(4, "FVG רק בתוך X נרות אחרי נר ה-SMT", minval = 1, group = G4, tooltip = "ה-FVG של הכניסה חייב להיווצר בנר של ה-SMT או ב-X הנרות שאחריו.")
@@ -164,7 +167,7 @@ f_model(int L, int R) =>
     // פתיחת הנר הראשון ברצף הנרות העולים / היורדים האחרון (ל-CISD בשיטת ICT)
     float uro  = ta.valuewhen(close > open and not (close[1] > open[1]), open, 0)
     float dro  = ta.valuewhen(close < open and not (close[1] < open[1]), open, 0)
-    [ph[1], pl[1], pT[1], minC[1], minL[1], maxC[1], maxH[1], close[1], high[1], low[1], time[1], uro[1], dro[1]]
+    [ph[1], pl[1], pT[1], minC[1], minL[1], maxC[1], maxH[1], close[1], high[1], low[1], time[1], uro[1], dro[1], high[3], low[3], time[2]]
 
 // נכס השוואה: פיבוטים (שיטת LuxAlgo) + שיא/שפל בחלון הפיבוט (שיטת חלון)
 f_cmp(int L, int R) =>
@@ -174,7 +177,7 @@ f_cmp(int L, int R) =>
     float lw = ta.lowest(low, L + R + 1)
     [ph[1], pl[1], hw[1], lw[1], time[1], high[1], low[1]]
 
-[mPH, mPL, mPT, mMinC, mMinL, mMaxC, mMaxH, mC, mH, mL, mT, mURO, mDRO] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR), lookahead = barmerge.lookahead_on)
+[mPH, mPL, mPT, mMinC, mMinL, mMaxC, mMaxH, mC, mH, mL, mT, mURO, mDRO, mH3, mL3, mT2] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR), lookahead = barmerge.lookahead_on)
 [c1PH, c1PL, c1HiW, c1LoW, c1T, c1H5, c1L5] = request.security(cmp1, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
 [c2PH, c2PL, c2HiW, c2LoW, c2T, c2H5, c2L5] = request.security(cmp2, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
 
@@ -571,10 +574,13 @@ var array<float> uBot = array.new<float>()
 var array<int>   uT   = array.new<int>()
 
 // Mitigation כמו ב-Panda Zones: FVG נפסל כשהמחיר (סגירה או פתיל) עובר את אחוז ה-Mitigation שלו
+// בכניסה מגרף 5 דק': ה-FVG-ים נבנים מנרות 5 הדקות, וגם ה-Mitigation נבדק רק בסגירת נר 5 דקות
+bool  ent5   = entryTf == ENT_MODEL
+bool  mitNow = not ent5 or newHtf
 float mitF   = mitPct / 100
-float mitUp  = mitType == "Close" ? close : high
-float mitDn  = mitType == "Close" ? close : low
-if array.size(bTop) > 0
+float mitUp  = mitType == "Close" ? (ent5 ? mC : close) : (ent5 ? mH : high)
+float mitDn  = mitType == "Close" ? (ent5 ? mC : close) : (ent5 ? mL : low)
+if mitNow and array.size(bTop) > 0
     for i = array.size(bTop) - 1 to 0
         float t = array.get(bTop, i)
         float b = array.get(bBot, i)
@@ -582,7 +588,7 @@ if array.size(bTop) > 0
             array.remove(bTop, i)
             array.remove(bBot, i)
             array.remove(bT, i)
-if array.size(uTop) > 0
+if mitNow and array.size(uTop) > 0
     for i = array.size(uTop) - 1 to 0
         float t = array.get(uTop, i)
         float b = array.get(uBot, i)
@@ -594,7 +600,19 @@ if array.size(uTop) > 0
 float minGap = fvgMinT * syminfo.mintick
 bool newBearF = false
 bool newBullF = false
-if bar_index >= 2
+if ent5
+    if newHtf and not na(mH3)
+        if mH < mL3 and mL3 - mH >= minGap
+            newBearF := true
+            array.push(bTop, mL3)
+            array.push(bBot, mH)
+            array.push(bT, mT2)
+        if mL > mH3 and mL - mH3 >= minGap
+            newBullF := true
+            array.push(uTop, mL)
+            array.push(uBot, mH3)
+            array.push(uT, mT2)
+else if bar_index >= 2
     if high < low[2] and low[2] - high >= minGap
         newBearF := true
         array.push(bTop, low[2])
@@ -843,7 +861,7 @@ f_extClose(int t0, bool wantMin) =>
 // סוף חלון ה-FVG: X נרות אחרי נר ה-SMT
 f_winEnd(float price, int swingT, bool isHigh) =>
     int r = na
-    if fvgWinTf == WIN_MODEL
+    if fvgWinTf == WIN_MODEL or (ent5 and fvgWinTf != WIN_OFF)
         r := swingT + (fvgWin + 1) * tfMs
     else if fvgWinTf == WIN_CHART
         int barMs = timeframe.in_seconds() * 1000
@@ -1163,4 +1181,4 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
-    f_row(tbl, 20, "גרסת קוד", "v29", color.yellow)
+    f_row(tbl, 20, "גרסת קוד", "v30", color.yellow)
