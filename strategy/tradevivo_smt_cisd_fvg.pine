@@ -536,6 +536,18 @@ var float tExt   = na
 var bool  done1  = false
 var bool  done2  = false
 
+// משפך סטאפים — לאבחון
+var int nSmt      = 0
+var int nCisd     = 0
+var int nFilled   = 0
+var int nRepl     = 0
+var int nCxBeyond = 0
+var int nCxCisd   = 0
+var int nCxWait   = 0
+var int nCxTgt    = 0
+var int nNoFvg    = 0
+var int nOutSess  = 0
+
 // ───────────── זיהוי כניסה לעסקה ─────────────
 int lastEntryT = 0
 if strategy.opentrades > 0
@@ -631,18 +643,6 @@ f_winEnd(float price, int swingT, bool isHigh) =>
     r
 
 // ───────────── סטאפ: SMT → CISD ─────────────
-// משפך סטאפים — לאבחון
-var int nSmt      = 0
-var int nCisd     = 0
-var int nFilled   = 0
-var int nRepl     = 0
-var int nCxBeyond = 0
-var int nCxCisd   = 0
-var int nCxWait   = 0
-var int nCxTgt    = 0
-var int nNoFvg    = 0
-var int nOutSess  = 0
-
 bool isFlat     = strategy.position_size == 0
 bool allowLong  = dirMode != DIR_SHORT
 bool allowShort = dirMode != DIR_LONG
