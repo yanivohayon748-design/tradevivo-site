@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT-CISD-FVG", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v26", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -1109,7 +1109,7 @@ f_row(table t, int r, string k, string v, color c) =>
     table.cell(t, 0, r, k, text_color = color.silver, text_size = size.small, text_halign = text.align_right)
     table.cell(t, 1, r, v, text_color = c, text_size = size.small)
 
-var table tbl = table.new(position.top_right, 2, 20, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
+var table tbl = table.new(position.top_right, 2, 21, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
 if showTbl and barstate.islast
     string side   = stDir == -1 ? "שורט" : "לונג"
     string status = strategy.position_size > 0 ? "בעסקת לונג" : strategy.position_size < 0 ? "בעסקת שורט" : stStage == 1 ? side + ": ממתין ל-CISD" : stStage == 2 ? (placed ? side + ": לימיט ב-FVG" : side + ": " + (whyNow != "" ? whyNow : "מחפש FVG")) : "מחפש SMT"
@@ -1133,3 +1133,4 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
+    f_row(tbl, 20, "גרסת קוד", "v26", color.yellow)
