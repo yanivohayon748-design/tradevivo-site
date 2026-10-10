@@ -60,7 +60,7 @@ cmp1     = input.symbol("CME_MINI:MES1!", "נכס השוואה 1", inline = "c1"
 cmp2On   = input.bool(false, "", inline = "c2", group = G2)
 cmp2     = input.symbol("CME_MINI:MNQ1!", "נכס השוואה 2", inline = "c2", group = G2)
 pivL     = input.int(6, "Pivot — נרות משמאל", minval = 1, group = G2)
-pivR     = input.int(2, "Pivot — נרות מימין (אישור)", minval = 1, group = G2, tooltip = "כמה נרות 5 דק' אחרי השיא צריך כדי לאשר אותו. LuxAlgo מצייר את ה-SMT אחורה על השיא, אבל בזמן אמת הוא יודע עליו רק אחרי הנרות האלה: 6 = חצי שעה אחרי השיא, 2 = 10 דקות. מספר קטן = SMT מוקדם יותר (ויותר רעש).")
+pivR     = input.int(6, "Pivot — נרות מימין (אישור)", minval = 1, group = G2, tooltip = "כמה נרות 5 דק' אחרי השיא צריך כדי לאשר אותו. LuxAlgo מצייר את ה-SMT אחורה על השיא, אבל בזמן אמת הוא יודע עליו רק אחרי הנרות האלה: 6 = חצי שעה אחרי השיא, 2 = 10 דקות. מספר קטן = SMT מוקדם יותר (ויותר רעש).")
 smtEngine = input.string(ENG_LUX, "שיטת זיהוי SMT", options = [ENG_LUX, ENG_WIN], group = G2, tooltip = "LuxAlgo: זהה לאינדיקטור SMT Divergences — SMT רק כששני הנכסים עשו פיבוט באותו נר.\nחלון: משווה לשיא/שפל של נכס ההשוואה בחלון הפיבוט — מזהה יותר SMT-ים, גם כשבנכס ההשוואה אין פיבוט מלא.")
 maxDist  = input.int(100, "מרחק מקס' בין שני השיאים (נרות)", minval = 3, group = G2, tooltip = "ב-LuxAlgo אין מגבלה. מספר נמוך יותר = רק SMT-ים בין שיאים קרובים.")
 smtMode  = input.string(SMT_BOTH, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], group = G2, tooltip = "שני הכיוונים: כל אחד מהנכסים יכול להיות זה שנכשל.\nרק הנכס שלי חלש: בשורט — הנכס שלי עשה שיא נמוך יותר וההשוואה שיא גבוה יותר (ולהפך בלונג).")
