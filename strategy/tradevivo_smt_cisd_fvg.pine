@@ -17,7 +17,7 @@ strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT-CISD-FVG", overla
 string DIR_BOTH   = "לונג ושורט"
 string DIR_LONG   = "לונג בלבד"
 string DIR_SHORT  = "שורט בלבד"
-string ENG_LIVE   = "חי: נכס ההשוואה שובר שיא והנכס שלי לא"
+string ENG_LIVE   = "חי (5 דק'): נכס ההשוואה שובר שיא והנכס שלי לא"
 string ENG_LUX    = "LuxAlgo (פיבוט בשני הנכסים)"
 string ENG_WIN    = "חלון (גמיש)"
 string SMT_BOTH   = "שני הכיוונים"
@@ -62,11 +62,11 @@ cmp2On   = input.bool(false, "", inline = "c2", group = G2)
 cmp2     = input.symbol("CME_MINI:MNQ1!", "נכס השוואה 2", inline = "c2", group = G2)
 pivL     = input.int(6, "Pivot — נרות משמאל", minval = 1, group = G2)
 pivR     = input.int(6, "Pivot — נרות מימין (אישור)", minval = 1, group = G2, tooltip = "כמה נרות 5 דק' אחרי השיא צריך כדי לאשר אותו. LuxAlgo מצייר את ה-SMT אחורה על השיא, אבל בזמן אמת הוא יודע עליו רק אחרי הנרות האלה: 6 = חצי שעה אחרי השיא, 2 = 10 דקות. מספר קטן = SMT מוקדם יותר (ויותר רעש).")
-smtEngine = input.string(ENG_LIVE, "שיטת זיהוי SMT", options = [ENG_LIVE, ENG_LUX, ENG_WIN], group = G2, tooltip = "חי: SMT מזוהה ברגע שנכס ההשוואה (MES) שובר שיא/שפל קודם (פיבוט 5 דק') והנכס שלי לא — בלי לחכות לאישור. כמו שרואים בזמן אמת.\nLuxAlgo: זהה לאינדיקטור SMT Divergences — SMT רק כששני הנכסים עשו פיבוט באותו נר.\nחלון: משווה לשיא/שפל של נכס ההשוואה בחלון הפיבוט — מזהה יותר SMT-ים, גם כשבנכס ההשוואה אין פיבוט מלא.")
+smtEngine = input.string(ENG_LIVE, "שיטת זיהוי SMT", options = [ENG_LIVE, ENG_LUX, ENG_WIN], group = G2, tooltip = "חי (5 דק'): SMT מזוהה בסגירת נר 5 דק' שבו נכס ההשוואה (MES) שבר שיא/שפל קודם והנכס שלי לא — בלי לחכות לאישור פיבוט.\nLuxAlgo: זהה לאינדיקטור SMT Divergences — SMT רק כששני הנכסים עשו פיבוט באותו נר.\nחלון: משווה לשיא/שפל של נכס ההשוואה בחלון הפיבוט — מזהה יותר SMT-ים, גם כשבנכס ההשוואה אין פיבוט מלא.")
 maxDist  = input.int(100, "מרחק מקס' בין שני השיאים (נרות)", minval = 3, group = G2, tooltip = "ב-LuxAlgo אין מגבלה. מספר נמוך יותר = רק SMT-ים בין שיאים קרובים.")
 smtMode  = input.string(SMT_WEAK, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], group = G2, tooltip = "שני הכיוונים: כל אחד מהנכסים יכול להיות זה שנכשל.\nרק הנכס שלי חלש: בשורט — הנכס שלי עשה שיא נמוך יותר וההשוואה שיא גבוה יותר (ולהפך בלונג).")
 
-cisdMode = input.string(CISD_1M, "שבירת CISD לפי", options = [CISD_1M, CISD_BODY, CISD_WICK], group = G3, tooltip = "סגירת נר דקה: מספיק שנר דקה נסגר מעבר לקו.\nסגירת נר 5 דק': צריך נר 5 דקות שנסגר מעבר לקו.\nפתיל: מספיק שהמחיר נגע מעבר לקו.")
+cisdMode = input.string(CISD_BODY, "שבירת CISD לפי", options = [CISD_1M, CISD_BODY, CISD_WICK], group = G3, tooltip = "סגירת נר דקה: מספיק שנר דקה נסגר מעבר לקו.\nסגירת נר 5 דק': צריך נר 5 דקות שנסגר מעבר לקו.\nפתיל: מספיק שהמחיר נגע מעבר לקו.")
 needCisd = input.bool(true, "חובה לחכות ל-CISD לפני הכניסה", group = G3, tooltip = "כבוי: האסטרטגיה שמה לימיט ב-FVG מיד אחרי ה-SMT, בלי לחכות לשבירת ה-CISD.")
 cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
 
@@ -159,11 +159,11 @@ f_cmp(int L, int R) =>
     float pl = ta.pivotlow(low, L, R)
     float hw = ta.highest(high, L + R + 1)
     float lw = ta.lowest(low, L + R + 1)
-    [ph[1], pl[1], hw[1], lw[1], time[1]]
+    [ph[1], pl[1], hw[1], lw[1], time[1], high[1], low[1]]
 
 [mPH, mPL, mPT, mMinC, mMinL, mMaxC, mMaxH, mC, mH, mL, mT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR), lookahead = barmerge.lookahead_on)
-[c1PH, c1PL, c1HiW, c1LoW, c1T] = request.security(cmp1, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
-[c2PH, c2PL, c2HiW, c2LoW, c2T] = request.security(cmp2, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
+[c1PH, c1PL, c1HiW, c1LoW, c1T, c1H5, c1L5] = request.security(cmp1, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
+[c2PH, c2PL, c2HiW, c2LoW, c2T, c2H5, c2L5] = request.security(cmp2, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
 
 bool newHtf = not na(mT) and mT != nz(mT[1])
 bool tfOk   = timeframe.in_seconds() < timeframe.in_seconds(modelTf)
@@ -349,9 +349,6 @@ bool useLive = smtEngine == ENG_LIVE
 // נשמרים השיאים/שפלים האחרונים (פיבוטים של 5 דק') של הנכס שלי, יחד עם השיא/שפל של נכס ההשוואה באותו זמן.
 // SMT לשורט: נכס ההשוואה עבר את השיא שלו והנכס שלי עדיין מתחת לשיא שלו (ולהפך ללונג).
 // רמת ה-CISD = השפל הנמוך ביותר שבין השיא הקודם לשיא החדש של הנכס שלי.
-[c1H1, c1L1] = request.security(cmp1, timeframe.period, [high, low])
-[c2H1, c2L1] = request.security(cmp2, timeframe.period, [high, low])
-
 var array<Piv> pvHs = array.new<Piv>()
 var array<Piv> pvLs = array.new<Piv>()
 
@@ -372,14 +369,18 @@ float lvUCisd  = na
 float lvURun   = na
 int   lvUType  = 0
 
-if useLive
-    if newHtf and not na(mPH)
-        float r0 = f_between(mPT, mT + 1, true)
+if useLive and newHtf
+    float k1H = c1T == mT ? c1H5 : na
+    float k1L = c1T == mT ? c1L5 : na
+    float k2H = c2T == mT ? c2H5 : na
+    float k2L = c2T == mT ? c2L5 : na
+    if not na(mPH)
+        float r0 = f_between(mPT, mT, true)
         array.push(pvHs, Piv.new(mPH, mPT, c1T == mT ? c1HiW : na, c2T == mT ? c2HiW : na, na, na, na, na, r0, r0))
         if array.size(pvHs) > 6
             array.shift(pvHs)
-    if newHtf and not na(mPL)
-        float r1 = f_between(mPT, mT + 1, false)
+    if not na(mPL)
+        float r1 = f_between(mPT, mT, false)
         array.push(pvLs, Piv.new(mPL, mPT, c1T == mT ? c1LoW : na, c2T == mT ? c2LoW : na, na, na, na, na, r1, r1))
         if array.size(pvLs) > 6
             array.shift(pvLs)
@@ -387,13 +388,13 @@ if useLive
     if array.size(pvHs) > 0
         for i = array.size(pvHs) - 1 to 0
             Piv p = array.get(pvHs, i)
-            if na(p.ext) or high > p.ext
+            if na(p.ext) or mH > p.ext
                 p.cis  := p.run
-                p.ext  := high
-                p.extT := time
-            p.run := na(p.run) ? low : math.min(p.run, low)
-            p.x1  := na(c1H1) ? p.x1 : na(p.x1) ? c1H1 : math.max(p.x1, c1H1)
-            p.x2  := na(c2H1) ? p.x2 : na(p.x2) ? c2H1 : math.max(p.x2, c2H1)
+                p.ext  := mH
+                p.extT := mT
+            p.run := na(p.run) ? mL : math.min(p.run, mL)
+            p.x1  := na(k1H) ? p.x1 : na(p.x1) ? k1H : math.max(p.x1, k1H)
+            p.x2  := na(k2H) ? p.x2 : na(p.x2) ? k2H : math.max(p.x2, k2H)
             bool on1    = cmp1On and not na(p.c1)
             bool on2    = cmp2On and not na(p.c2)
             bool sw1    = on1 and p.x1 > p.c1
@@ -401,7 +402,7 @@ if useLive
             bool mainSw = p.ext > p.px
             bool typeA  = (sw1 or sw2) and not mainSw
             bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
-            bool tooOld = time - p.t > maxDist * tfMs
+            bool tooOld = mT - p.t > maxDist * tfMs
             bool fire   = not lvBear and not tooOld and (typeA or typeB) and not na(p.cis)
             if fire
                 lvBear   := true
@@ -419,13 +420,13 @@ if useLive
     if array.size(pvLs) > 0
         for i = array.size(pvLs) - 1 to 0
             Piv p = array.get(pvLs, i)
-            if na(p.ext) or low < p.ext
+            if na(p.ext) or mL < p.ext
                 p.cis  := p.run
-                p.ext  := low
-                p.extT := time
-            p.run := na(p.run) ? high : math.max(p.run, high)
-            p.x1  := na(c1L1) ? p.x1 : na(p.x1) ? c1L1 : math.min(p.x1, c1L1)
-            p.x2  := na(c2L1) ? p.x2 : na(p.x2) ? c2L1 : math.min(p.x2, c2L1)
+                p.ext  := mL
+                p.extT := mT
+            p.run := na(p.run) ? mH : math.max(p.run, mH)
+            p.x1  := na(k1L) ? p.x1 : na(p.x1) ? k1L : math.min(p.x1, k1L)
+            p.x2  := na(k2L) ? p.x2 : na(p.x2) ? k2L : math.min(p.x2, k2L)
             bool on1    = cmp1On and not na(p.c1)
             bool on2    = cmp2On and not na(p.c2)
             bool sw1    = on1 and p.x1 < p.c1
@@ -433,7 +434,7 @@ if useLive
             bool mainSw = p.ext < p.px
             bool typeA  = (sw1 or sw2) and not mainSw
             bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
-            bool tooOld = time - p.t > maxDist * tfMs
+            bool tooOld = mT - p.t > maxDist * tfMs
             bool fire   = not lvBull and not tooOld and (typeA or typeB) and not na(p.cis)
             if fire
                 lvBull   := true
@@ -808,7 +809,7 @@ if goBear and allowShort and isFlat
     stLive   := useLive
     stLType  := lvBType
     stWinEnd := f_winEnd(stSwing, stSwingT, true)
-    float chkB = cisdMode == CISD_1M ? f_extClose(stSwingT, true) : useLive ? na : cisdMode == CISD_BODY ? mMinC : mMinL
+    float chkB = cisdMode == CISD_1M ? f_extClose(stSwingT, true) : cisdMode == CISD_BODY ? (useLive ? mC : mMinC) : (useLive ? mL : mMinL)
     if not na(chkB) and chkB < stCisd
         stStage := 2
         stCisdT := time
@@ -840,7 +841,7 @@ if goBull and allowLong and isFlat
     stLive   := useLive
     stLType  := lvUType
     stWinEnd := f_winEnd(stSwing, stSwingT, false)
-    float chkU = cisdMode == CISD_1M ? f_extClose(stSwingT, false) : useLive ? na : cisdMode == CISD_BODY ? mMaxC : mMaxH
+    float chkU = cisdMode == CISD_1M ? f_extClose(stSwingT, false) : cisdMode == CISD_BODY ? (useLive ? mC : mMaxC) : (useLive ? mH : mMaxH)
     if not na(chkU) and chkU > stCisd
         stStage := 2
         stCisdT := time
@@ -864,11 +865,11 @@ f_endLabel(int dir, string reason) =>
 
 if stStage > 0 and isFlat
     // SMT חי: עד שה-CISD נשבר, שיא/שפל ה-SMT ממשיך להתעדכן אם המחיר ממשיך (בלי לעבור את השיא/שפל הקודם)
-    if stLive and stStage == 1 and time != stArmT
-        bool newExt = stDir == -1 ? high > stSwing and (stLType == 2 or high <= stPrev) : low < stSwing and (stLType == 2 or low >= stPrev)
+    if stLive and stStage == 1 and newHtf and time != stArmT
+        bool newExt = stDir == -1 ? mH > stSwing and (stLType == 2 or mH <= stPrev) : mL < stSwing and (stLType == 2 or mL >= stPrev)
         if newExt
-            stSwing  := stDir == -1 ? high : low
-            stSwingT := time
+            stSwing  := stDir == -1 ? mH : mL
+            stSwingT := mT
             stCisd   := stRun
             stWinEnd := f_winEnd(stSwing, stSwingT, stDir == -1)
             if showDraw
@@ -876,7 +877,7 @@ if stStage > 0 and isFlat
                 label.set_xy(lbSmt, stSwingT, stSwing)
                 line.set_y1(lnCisd, stCisd)
                 line.set_y2(lnCisd, stCisd)
-        stRun := stDir == -1 ? math.min(stRun, low) : math.max(stRun, high)
+        stRun := stDir == -1 ? math.min(stRun, mL) : math.max(stRun, mH)
     stExt := stDir == -1 ? math.min(stExt, low) : math.max(stExt, high)
     bool beyond = stLive and stStage == 1 ? stLType == 1 and (stDir == -1 ? high > stPrev : low < stPrev) : stDir == -1 ? high > stSwing : low < stSwing
     if beyond
