@@ -128,6 +128,19 @@ flatEnd = input.bool(false, "סגור פוזיציה בסוף הסשן", group =
 showDraw = input.bool(true, "הצג SMT / CISD / FVG על הגרף", group = G10)
 showTbl  = input.bool(true, "הצג טבלת סטטוס", group = G10)
 
+// רשומת שיא/שפל עבור זיהוי SMT חי
+type Piv
+    float px
+    int   t
+    float c1
+    float c2
+    float ext
+    int   extT
+    float x1
+    float x2
+    float run
+    float cis
+
 // ───────────── נתוני המודל (5 דק') — ללא ריפיינט ─────────────
 // כל הערכים מוחזרים מהנר הסגור האחרון של טיימפריים המודל ([1] + lookahead_on)
 f_model(int L, int R) =>
@@ -336,18 +349,6 @@ bool useLive = smtEngine == ENG_LIVE
 // נשמרים השיאים/שפלים האחרונים (פיבוטים של 5 דק') של הנכס שלי, יחד עם השיא/שפל של נכס ההשוואה באותו זמן.
 // SMT לשורט: נכס ההשוואה עבר את השיא שלו והנכס שלי עדיין מתחת לשיא שלו (ולהפך ללונג).
 // רמת ה-CISD = השפל הנמוך ביותר שבין השיא הקודם לשיא החדש של הנכס שלי.
-type Piv
-    float px
-    int   t
-    float c1
-    float c2
-    float ext
-    int   extT
-    float x1
-    float x2
-    float run
-    float cis
-
 [c1H1, c1L1] = request.security(cmp1, timeframe.period, [high, low])
 [c2H1, c2L1] = request.security(cmp2, timeframe.period, [high, low])
 
