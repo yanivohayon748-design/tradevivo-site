@@ -404,12 +404,12 @@ if useLive and newHtf
     if not na(mPH)
         float r0 = f_between(mPT, mT, true)
         array.push(pvHs, Piv.new(px = mPH, t = mPT, c1 = c1T == mT ? c1HiW : na, c2 = c2T == mT ? c2HiW : na, run = r0, cis = r0))
-        if array.size(pvHs) > 6
+        if array.size(pvHs) > 12
             array.shift(pvHs)
     if not na(mPL)
         float r1 = f_between(mPT, mT, false)
         array.push(pvLs, Piv.new(px = mPL, t = mPT, c1 = c1T == mT ? c1LoW : na, c2 = c2T == mT ? c2LoW : na, run = r1, cis = r1))
-        if array.size(pvLs) > 6
+        if array.size(pvLs) > 12
             array.shift(pvLs)
     // שיאים → SMT לשורט. אם כמה שיאים קודמים נותנים SMT — נבחר הגבוה ביותר (הנזילות המשמעותית).
     // אותו שיא קודם יכול לתת SMT שוב, אם נוצר שיא חדש וגבוה יותר (אבל עדיין מתחתיו) אחרי שהסטאפ הקודם נגמר.
