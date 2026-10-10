@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v28", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v29", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -25,6 +25,8 @@ string SMT_WEAK   = "רק הנכס שלי לא שובר"
 string CISD_1M    = "סגירת נר דקה"
 string CISD_BODY  = "סגירת נר 5 דק'"
 string CISD_WICK  = "פתיל"
+string CDEF_LOW   = "השפל/שיא בין שני הקיצונים"
+string CDEF_ICT   = "פתיחת רצף הנרות שהוביל לקיצון (ICT)"
 string PICK_NEAR  = "הקרוב למחיר"
 string PICK_SWING = "העליון ביותר (הקרוב לשיא/שפל)"
 string PICK_BIG   = "הגדול ביותר"
@@ -67,6 +69,7 @@ maxDist  = input.int(100, "מרחק מקס' בין שני השיאים (נרות
 smtMode  = input.string(SMT_BOTH, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], group = G2, tooltip = "שני הכיוונים: כל אחד מהנכסים יכול להיות זה שנכשל (מומלץ).\nרק הנכס שלי לא שובר: בשורט — MNQ לא עבר את השיא ו-MES כן. בלונג — MNQ לא שבר את השפל ו-MES כן. כש-NQ חלש מ-ES זה כמעט לא נותן לונגים.")
 
 cisdMode = input.string(CISD_BODY, "שבירת CISD לפי", options = [CISD_1M, CISD_BODY, CISD_WICK], group = G3, tooltip = "סגירת נר דקה: מספיק שנר דקה נסגר מעבר לקו.\nסגירת נר 5 דק': צריך נר 5 דקות שנסגר מעבר לקו.\nפתיל: מספיק שהמחיר נגע מעבר לקו.")
+cisdDef  = input.string(CDEF_LOW, "רמת ה-CISD", options = [CDEF_LOW, CDEF_ICT], group = G3, tooltip = "השפל/שיא בין שני הקיצונים: בשורט — השפל הנמוך ביותר בין השיא הקודם לשיא ה-SMT.\nICT: בשורט — הפתיחה של הנר הראשון ברצף הנרות העולים שהוביל לשיא ה-SMT (בלונג — רצף הנרות היורדים שהוביל לשפל). בדרך כלל קרוב יותר לקיצון, ולכן נשבר מוקדם יותר.\nעובד עם מנוע ה-SMT החי.")
 needCisd = input.bool(true, "חובה לחכות ל-CISD לפני הכניסה", group = G3, tooltip = "כבוי: האסטרטגיה שמה לימיט ב-FVG מיד אחרי ה-SMT, בלי לחכות לשבירת ה-CISD.")
 cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
 
@@ -141,6 +144,7 @@ type Piv
     float x2
     float run
     float cis
+    float ict
     bool  used    = false
     float usedExt
     bool  dead    = false
@@ -157,7 +161,10 @@ f_model(int L, int R) =>
     float minL = ta.lowest(low, R)
     float maxC = ta.highest(close, R)
     float maxH = ta.highest(high, R)
-    [ph[1], pl[1], pT[1], minC[1], minL[1], maxC[1], maxH[1], close[1], high[1], low[1], time[1]]
+    // פתיחת הנר הראשון ברצף הנרות העולים / היורדים האחרון (ל-CISD בשיטת ICT)
+    float uro  = ta.valuewhen(close > open and not (close[1] > open[1]), open, 0)
+    float dro  = ta.valuewhen(close < open and not (close[1] < open[1]), open, 0)
+    [ph[1], pl[1], pT[1], minC[1], minL[1], maxC[1], maxH[1], close[1], high[1], low[1], time[1], uro[1], dro[1]]
 
 // נכס השוואה: פיבוטים (שיטת LuxAlgo) + שיא/שפל בחלון הפיבוט (שיטת חלון)
 f_cmp(int L, int R) =>
@@ -167,7 +174,7 @@ f_cmp(int L, int R) =>
     float lw = ta.lowest(low, L + R + 1)
     [ph[1], pl[1], hw[1], lw[1], time[1], high[1], low[1]]
 
-[mPH, mPL, mPT, mMinC, mMinL, mMaxC, mMaxH, mC, mH, mL, mT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR), lookahead = barmerge.lookahead_on)
+[mPH, mPL, mPT, mMinC, mMinL, mMaxC, mMaxH, mC, mH, mL, mT, mURO, mDRO] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR), lookahead = barmerge.lookahead_on)
 [c1PH, c1PL, c1HiW, c1LoW, c1T, c1H5, c1L5] = request.security(cmp1, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
 [c2PH, c2PL, c2HiW, c2LoW, c2T, c2H5, c2L5] = request.security(cmp2, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
 
@@ -350,6 +357,7 @@ if newHtf
         mLastPLt := mPT
 
 bool useLive = smtEngine == ENG_LIVE
+bool useIct  = cisdDef == CDEF_ICT and useLive
 
 // ───────────── מצב הסטאפ ─────────────
 // סטאפ: 0 = אין, 1 = ממתין ל-CISD, 2 = ממתין לכניסה ב-FVG
@@ -433,6 +441,7 @@ if useLive and newHtf
                 p.x2    := na
             if na(p.ext) or mH > p.ext
                 p.cis  := p.run
+                p.ict  := mURO
                 p.ext  := mH
                 p.extT := mT
             p.run := na(p.run) ? mL : math.min(p.run, mL)
@@ -448,7 +457,7 @@ if useLive and newHtf
             bool tooOld = mT - p.t > maxDist * tfMs
             bool fresh  = not p.used and p.fires < 3 and (not p.again or mH < p.ext)
             p.dead := tooOld or (mainSw and (weak or p.again or ((not on1 or sw1) and (not on2 or sw2))))
-            if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
+            if not p.dead and (typeA or typeB) and not na(useIct ? p.ict : p.cis) and fresh
                 if bestI < 0 or p.px > bestPx
                     bestI  := i
                     bestPx := p.px
@@ -459,7 +468,7 @@ if useLive and newHtf
             lvBSwT    := q.extT
             lvBPrev   := q.px
             lvBPrevT  := q.t
-            lvBCisd   := q.cis
+            lvBCisd   := useIct ? q.ict : q.cis
             lvBRun    := q.run
             lvBType   := q.ext > q.px ? 2 : 1
             q.used    := true
@@ -485,6 +494,7 @@ if useLive and newHtf
                 p.x2    := na
             if na(p.ext) or mL < p.ext
                 p.cis  := p.run
+                p.ict  := mDRO
                 p.ext  := mL
                 p.extT := mT
             p.run := na(p.run) ? mH : math.max(p.run, mH)
@@ -500,7 +510,7 @@ if useLive and newHtf
             bool tooOld = mT - p.t > maxDist * tfMs
             bool fresh  = not p.used and p.fires < 3 and (not p.again or mL > p.ext)
             p.dead := tooOld or (mainSw and (weak or p.again or ((not on1 or sw1) and (not on2 or sw2))))
-            if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
+            if not p.dead and (typeA or typeB) and not na(useIct ? p.ict : p.cis) and fresh
                 if bestI < 0 or p.px < bestPx
                     bestI  := i
                     bestPx := p.px
@@ -511,7 +521,7 @@ if useLive and newHtf
             lvUSwT    := q.extT
             lvUPrev   := q.px
             lvUPrevT  := q.t
-            lvUCisd   := q.cis
+            lvUCisd   := useIct ? q.ict : q.cis
             lvURun    := q.run
             lvUType   := q.ext < q.px ? 2 : 1
             q.used    := true
@@ -909,7 +919,7 @@ if goBear and allowShort and isFlat and (stStage == 0 or okReplS)
     if showDraw
         lnSmt  := line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.red, width = 2)
         lbSmt  := label.new(x = stSwingT, y = stSwing, text = f_smtTxt(), xloc = xloc.bar_time, style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
-        lnCisd := line.new(x1 = stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
+        lnCisd := line.new(x1 = useIct ? stSwingT : stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
         if not na(chkB) and chkB < stCisd
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
 
@@ -945,7 +955,7 @@ if goBull and allowLong and isFlat and (stStage == 0 or okReplL)
     if showDraw
         lnSmt  := line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.lime, width = 2)
         lbSmt  := label.new(x = stSwingT, y = stSwing, text = f_smtTxt(), xloc = xloc.bar_time, style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
-        lnCisd := line.new(x1 = stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
+        lnCisd := line.new(x1 = useIct ? stSwingT : stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
         if not na(chkU) and chkU > stCisd
             label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
 
@@ -963,7 +973,7 @@ if stStage > 0 and isFlat
         if newExt
             stSwing  := stDir == -1 ? mH : mL
             stSwingT := mT
-            stCisd   := stRun
+            stCisd   := useIct ? (stDir == -1 ? mURO : mDRO) : stRun
             stExt    := stDir == -1 ? mL : mH
             stWinEnd := f_winEnd(stSwing, stSwingT, stDir == -1)
             if showDraw
@@ -971,6 +981,8 @@ if stStage > 0 and isFlat
                 label.set_xy(lbSmt, stSwingT, stSwing)
                 label.set_text(lbSmt, f_smtTxt())
                 line.set_y1(lnCisd, stCisd)
+                if useIct
+                    line.set_x1(lnCisd, stSwingT)
                 line.set_y2(lnCisd, stCisd)
         stRun := stDir == -1 ? math.min(stRun, mL) : math.max(stRun, mH)
     stExt := stDir == -1 ? math.min(stExt, low) : math.max(stExt, high)
@@ -1151,4 +1163,4 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
-    f_row(tbl, 20, "גרסת קוד", "v28", color.yellow)
+    f_row(tbl, 20, "גרסת קוד", "v29", color.yellow)
