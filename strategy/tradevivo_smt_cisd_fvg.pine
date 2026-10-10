@@ -1,0 +1,616 @@
+//@version=6
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT-CISD-FVG", overlay = true,
+     pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
+     commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
+     max_bars_back = 2000, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+
+// ════════════════════════════════════════════════════════════════════
+//  המודל
+//  1. SMT מול נכס/י השוואה (ברירת מחדל MES1!) — בטיימפריים של המודל (5 דק')
+//  2. CISD חיצוני — שבירת השפל שבין שני השיאים (או השיא שבין שני השפלים)
+//  3. כניסה בלימיט ב-FVG של גרף הדקה, סטופ מעבר לשיא/שפל ה-SMT
+//  יש להריץ על גרף דקה של הנכס הנסחר (למשל MNQ1! או NQ1!)
+// ════════════════════════════════════════════════════════════════════
+
+// ───────────── קבועים ─────────────
+string DIR_BOTH   = "לונג ושורט"
+string DIR_LONG   = "לונג בלבד"
+string DIR_SHORT  = "שורט בלבד"
+string SMT_BOTH   = "שני הכיוונים"
+string SMT_WEAK   = "רק הנכס שלי חלש"
+string CISD_BODY  = "סגירת גוף"
+string CISD_WICK  = "פתיל"
+string PICK_NEAR  = "הקרוב למחיר"
+string PICK_SWING = "הקרוב לשיא/שפל"
+string PICK_BIG   = "הגדול ביותר"
+string EDGE_NEAR  = "קצה קרוב"
+string EDGE_MID   = "אמצע (50%)"
+string EDGE_FAR   = "קצה רחוק"
+
+string G1 = "כללי"
+string G2 = "SMT (טיימפריים המודל)"
+string G3 = "CISD (טיימפריים המודל)"
+string G4 = "כניסה — FVG (גרף הדקה)"
+string G5 = "סיכון"
+string G6 = "יעדים לפי RR"
+string G7 = "קידום סטופ לפי RR"
+string G8 = "מגבלות"
+string G9 = "סשנים"
+string G10 = "תצוגה"
+
+// ───────────── הגדרות ─────────────
+dirMode  = input.string(DIR_BOTH, "כיוון מסחר", options = [DIR_BOTH, DIR_LONG, DIR_SHORT], group = G1)
+modelTf  = input.timeframe("5", "טיימפריים של המודל (SMT + CISD)", group = G1)
+
+cmp1On   = input.bool(true, "", inline = "c1", group = G2)
+cmp1     = input.symbol("CME_MINI:MES1!", "נכס השוואה 1", inline = "c1", group = G2)
+cmp2On   = input.bool(false, "", inline = "c2", group = G2)
+cmp2     = input.symbol("CME_MINI:MNQ1!", "נכס השוואה 2", inline = "c2", group = G2)
+pivL     = input.int(6, "Pivot — נרות משמאל", minval = 1, group = G2)
+pivR     = input.int(6, "Pivot — נרות מימין", minval = 1, group = G2, tooltip = "כמה נרות מימין צריכים לאשר את השיא/שפל. מספר גבוה = פחות רעש אבל אישור מאוחר יותר. ב-LuxAlgo, Pivot Lookback = שני הערכים.")
+maxDist  = input.int(40, "מרחק מקס' בין שני השיאים (נרות)", minval = 3, group = G2)
+smtMode  = input.string(SMT_BOTH, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], group = G2, tooltip = "שני הכיוונים: כל אחד מהנכסים יכול להיות זה שנכשל.\nרק הנכס שלי חלש: בשורט — הנכס שלי עשה שיא נמוך יותר וההשוואה שיא גבוה יותר (ולהפך בלונג).")
+
+cisdMode = input.string(CISD_BODY, "שבירת CISD לפי", options = [CISD_BODY, CISD_WICK], group = G3)
+cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
+
+fvgPick   = input.string(PICK_NEAR, "איזה FVG", options = [PICK_NEAR, PICK_SWING, PICK_BIG], group = G4)
+fvgEdge   = input.string(EDGE_NEAR, "נקודת כניסה ב-FVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G4)
+fvgMinT   = input.int(2, "גודל FVG מינ' (טיקים)", minval = 1, group = G4)
+usePD     = input.bool(false, "רק FVG ב-Premium / Discount של התנועה", group = G4, tooltip = "בשורט: נקודת הכניסה מעל 50% של התנועה משיא ה-SMT עד השפל שאחריו. בלונג: מתחת ל-50%.")
+entryWait = input.int(60, "זמן מקס' לכניסה אחרי CISD (דקות)", minval = 1, group = G4)
+cancelTgt = input.bool(true, "ביטול אם המחיר הגיע ליעד לפני הכניסה", group = G4)
+
+riskUsd  = input.float(200, "סיכון קבוע לעסקה ($)", minval = 1, group = G5)
+maxQty   = input.int(10, "מקסימום חוזים", minval = 1, group = G5)
+slBuf    = input.int(2, "מרווח סטופ מעבר לשיא/שפל (טיקים)", minval = 0, group = G5)
+slMinT   = input.int(8, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
+slMaxT   = input.int(400, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
+
+tp1RR  = input.float(1.0, "TP1 — RR", minval = 0.1, step = 0.1, inline = "tp1", group = G6)
+tp1Pct = input.float(50, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
+tp2RR  = input.float(2.0, "TP2 — RR", minval = 0.1, step = 0.1, inline = "tp2", group = G6)
+tp2Pct = input.float(25, "% לסגירה", minval = 0, maxval = 100, inline = "tp2", group = G6)
+tp3RR  = input.float(3.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6, tooltip = "TP3 סוגר את כל מה שנשאר אחרי TP1 ו-TP2. ליעד אחד בלבד: TP1 = 100%.")
+
+be1On = input.bool(true, "שלב 1", inline = "be1", group = G7)
+be1At = input.float(1.0, "כשמגיעים ל-R", step = 0.1, inline = "be1", group = G7)
+be1To = input.float(0.0, "סטופ ל-R", step = 0.1, inline = "be1", group = G7, tooltip = "0 = נקודת הכניסה (Breakeven). 1 = רווח של 1R נעול.")
+be2On = input.bool(false, "שלב 2", inline = "be2", group = G7)
+be2At = input.float(2.0, "כשמגיעים ל-R", step = 0.1, inline = "be2", group = G7)
+be2To = input.float(1.0, "סטופ ל-R", step = 0.1, inline = "be2", group = G7)
+be3On = input.bool(false, "שלב 3", inline = "be3", group = G7)
+be3At = input.float(3.0, "כשמגיעים ל-R", step = 0.1, inline = "be3", group = G7)
+be3To = input.float(2.0, "סטופ ל-R", step = 0.1, inline = "be3", group = G7)
+
+maxSess  = input.int(2, "מקס' עסקאות לסשן", minval = 1, group = G8)
+maxDay   = input.int(3, "מקס' עסקאות ליום", minval = 1, group = G8)
+maxWeek  = input.int(10, "מקס' עסקאות לשבוע", minval = 1, group = G8)
+maxMonth = input.int(30, "מקס' עסקאות לחודש", minval = 1, group = G8)
+maxLoss  = input.float(500, "מקס' הפסד יומי ($)  0 = ללא", minval = 0, group = G8)
+maxProf  = input.float(1000, "מקס' רווח יומי ($)  0 = ללא", minval = 0, group = G8)
+closeLim = input.bool(true, "סגור פוזיציה פתוחה כשמגיעים למגבלה היומית", group = G8)
+
+tz   = input.string("America/New_York", "אזור זמן", group = G9)
+s1On = input.bool(true,  "סשן 1", inline = "s1", group = G9)
+s1   = input.session("0930-1130", "", inline = "s1", group = G9)
+s2On = input.bool(false, "סשן 2", inline = "s2", group = G9)
+s2   = input.session("1130-1330", "", inline = "s2", group = G9)
+s3On = input.bool(false, "סשן 3", inline = "s3", group = G9)
+s3   = input.session("1330-1600", "", inline = "s3", group = G9)
+s4On = input.bool(false, "סשן 4", inline = "s4", group = G9)
+s4   = input.session("0300-0600", "", inline = "s4", group = G9)
+s5On = input.bool(false, "סשן 5", inline = "s5", group = G9)
+s5   = input.session("2000-2359", "", inline = "s5", group = G9)
+flatEnd = input.bool(false, "סגור פוזיציה בסוף הסשן", group = G9)
+
+showDraw = input.bool(true, "הצג SMT / CISD / FVG על הגרף", group = G10)
+showTbl  = input.bool(true, "הצג טבלת סטטוס", group = G10)
+
+// ───────────── נתוני המודל (5 דק') — ללא ריפיינט ─────────────
+// כל הערכים מוחזרים מהנר הסגור האחרון של טיימפריים המודל ([1] + lookahead_on)
+f_model(int L, int R, int maxD) =>
+    float ph = ta.pivothigh(high, L, R)
+    float pl = ta.pivotlow(low, L, R)
+    var float lastPH   = na
+    var int   lastPHbi = na
+    var int   lastPHt  = na
+    var float lastPL   = na
+    var int   lastPLbi = na
+    var int   lastPLt  = na
+    bool  newPH   = not na(ph)
+    bool  newPL   = not na(pl)
+    float prevPH  = na
+    int   prevPHt = na
+    float lowBtw  = na
+    float prevPL  = na
+    int   prevPLt = na
+    float highBtw = na
+    if newPH
+        int pb = bar_index - R
+        if not na(lastPHbi) and pb - lastPHbi >= 2 and pb - lastPHbi <= maxD
+            float m = low[R + 1]
+            for i = R + 1 to bar_index - lastPHbi - 1
+                m := math.min(m, low[i])
+            prevPH  := lastPH
+            prevPHt := lastPHt
+            lowBtw  := m
+        lastPH   := ph
+        lastPHbi := pb
+        lastPHt  := time[R]
+    if newPL
+        int pb = bar_index - R
+        if not na(lastPLbi) and pb - lastPLbi >= 2 and pb - lastPLbi <= maxD
+            float m = high[R + 1]
+            for i = R + 1 to bar_index - lastPLbi - 1
+                m := math.max(m, high[i])
+            prevPL  := lastPL
+            prevPLt := lastPLt
+            highBtw := m
+        lastPL   := pl
+        lastPLbi := pb
+        lastPLt  := time[R]
+    float minC = ta.lowest(close, R)
+    float minL = ta.lowest(low, R)
+    float maxC = ta.highest(close, R)
+    float maxH = ta.highest(high, R)
+    int   pT   = time[R]
+    [newPH[1], ph[1], pT[1], prevPH[1], prevPHt[1], lowBtw[1], minC[1], minL[1], newPL[1], pl[1], prevPL[1], prevPLt[1], highBtw[1], maxC[1], maxH[1], close[1], high[1], low[1], time[1]]
+
+// חלון השיא/שפל של נכס ההשוואה סביב אותו פיבוט (אותם נרות בזמן)
+f_win(int n) =>
+    [ta.highest(high, n)[1], ta.lowest(low, n)[1], time[1]]
+
+[mNewPH, mPH, mPT, mPrevPH, mPrevPHt, mLowBtw, mMinC, mMinL, mNewPL, mPL, mPrevPL, mPrevPLt, mHighBtw, mMaxC, mMaxH, mC, mH, mL, mT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, maxDist), lookahead = barmerge.lookahead_on)
+[c1HiW, c1LoW, c1T] = request.security(cmp1, modelTf, f_win(pivL + pivR + 1), lookahead = barmerge.lookahead_on)
+[c2HiW, c2LoW, c2T] = request.security(cmp2, modelTf, f_win(pivL + pivR + 1), lookahead = barmerge.lookahead_on)
+
+bool newHtf = not na(mT) and mT != nz(mT[1])
+bool tfOk   = timeframe.in_seconds() < timeframe.in_seconds(modelTf)
+int  tfMs   = timeframe.in_seconds(modelTf) * 1000
+
+// ───────────── זיהוי SMT ─────────────
+// שורט: בין שני שיאים — נכס אחד עושה שיא גבוה יותר והשני לא
+// לונג: בין שני שפלים — נכס אחד עושה שפל נמוך יותר והשני לא
+f_bearDiv(float cur, float prev, bool weakOnly) =>
+    bool mainLH = mPH < mPrevPH
+    bool mainHH = mPH > mPrevPH
+    (mainLH and cur > prev) or (not weakOnly and mainHH and cur < prev)
+
+f_bullDiv(float cur, float prev, bool weakOnly) =>
+    bool mainHL = mPL > mPrevPL
+    bool mainLL = mPL < mPrevPL
+    (mainHL and cur < prev) or (not weakOnly and mainLL and cur > prev)
+
+var float c1LastHi = na
+var float c1LastLo = na
+var float c2LastHi = na
+var float c2LastLo = na
+bool bearSMT = false
+bool bullSMT = false
+bool weak    = smtMode == SMT_WEAK
+
+if newHtf
+    bool al1 = c1T == mT
+    bool al2 = c2T == mT
+    if mNewPH
+        if not na(mPrevPH) and not na(mLowBtw)
+            bool d1 = cmp1On and al1 and not na(c1LastHi) and f_bearDiv(c1HiW, c1LastHi, weak)
+            bool d2 = cmp2On and al2 and not na(c2LastHi) and f_bearDiv(c2HiW, c2LastHi, weak)
+            bearSMT := d1 or d2
+        c1LastHi := al1 ? c1HiW : na
+        c2LastHi := al2 ? c2HiW : na
+    if mNewPL
+        if not na(mPrevPL) and not na(mHighBtw)
+            bool d1 = cmp1On and al1 and not na(c1LastLo) and f_bullDiv(c1LoW, c1LastLo, weak)
+            bool d2 = cmp2On and al2 and not na(c2LastLo) and f_bullDiv(c2LoW, c2LastLo, weak)
+            bullSMT := d1 or d2
+        c1LastLo := al1 ? c1LoW : na
+        c2LastLo := al2 ? c2LoW : na
+
+// ───────────── סשנים ─────────────
+f_in(string s) =>
+    not na(time(timeframe.period, s, tz))
+
+bool in1 = f_in(s1)
+bool in2 = f_in(s2)
+bool in3 = f_in(s3)
+bool in4 = f_in(s4)
+bool in5 = f_in(s5)
+int sessIdx = s1On and in1 ? 1 : s2On and in2 ? 2 : s3On and in3 ? 3 : s4On and in4 ? 4 : s5On and in5 ? 5 : 0
+
+// ───────────── מונים ומגבלות ─────────────
+var int   cSess    = 0
+var int   cDay     = 0
+var int   cWeek    = 0
+var int   cMonth   = 0
+var float dayStart = 0.0
+var bool  dayLock  = false
+
+if timeframe.change("D")
+    cDay     := 0
+    dayStart := strategy.netprofit
+    dayLock  := false
+if timeframe.change("W")
+    cWeek := 0
+if timeframe.change("M")
+    cMonth := 0
+if sessIdx != sessIdx[1] and sessIdx > 0
+    cSess := 0
+
+// ───────────── FVG בגרף הדקה ─────────────
+var array<float> bTop = array.new<float>()
+var array<float> bBot = array.new<float>()
+var array<int>   bT   = array.new<int>()
+var array<float> uTop = array.new<float>()
+var array<float> uBot = array.new<float>()
+var array<int>   uT   = array.new<int>()
+
+// FVG שנסגר בגוף נר מעבר לקצה הרחוק — נפסל
+if array.size(bTop) > 0
+    for i = array.size(bTop) - 1 to 0
+        if close > array.get(bTop, i)
+            array.remove(bTop, i)
+            array.remove(bBot, i)
+            array.remove(bT, i)
+if array.size(uTop) > 0
+    for i = array.size(uTop) - 1 to 0
+        if close < array.get(uBot, i)
+            array.remove(uTop, i)
+            array.remove(uBot, i)
+            array.remove(uT, i)
+
+float minGap = fvgMinT * syminfo.mintick
+if bar_index >= 2
+    if high < low[2] and low[2] - high >= minGap
+        array.push(bTop, low[2])
+        array.push(bBot, high)
+        array.push(bT, time[1])
+    if low > high[2] and low - high[2] >= minGap
+        array.push(uTop, low)
+        array.push(uBot, high[2])
+        array.push(uT, time[1])
+if array.size(bTop) > 300
+    array.shift(bTop)
+    array.shift(bBot)
+    array.shift(bT)
+if array.size(uTop) > 300
+    array.shift(uTop)
+    array.shift(uBot)
+    array.shift(uT)
+
+// בחירת FVG לכניסה מבין אלה שנוצרו אחרי שיא/שפל ה-SMT
+f_pick(int dir, array<float> tops, array<float> bots, array<int> ts, float swing, int swingT, float ext) =>
+    float bestLvl   = na
+    float bestTop   = na
+    float bestBot   = na
+    int   bestT     = na
+    float bestScore = na
+    float eq = (swing + ext) / 2
+    int n = array.size(tops)
+    if n > 0
+        for i = 0 to n - 1
+            float t  = array.get(tops, i)
+            float b  = array.get(bots, i)
+            int   ft = array.get(ts, i)
+            float nearE = dir == -1 ? b : t
+            float farE  = dir == -1 ? t : b
+            float lvl   = fvgEdge == EDGE_NEAR ? nearE : fvgEdge == EDGE_FAR ? farE : (t + b) / 2
+            bool inLeg = ft >= swingT and (dir == -1 ? t <= swing : b >= swing)
+            bool ahead = dir == -1 ? lvl > close : lvl < close
+            bool pdOk  = not usePD or (dir == -1 ? lvl >= eq : lvl <= eq)
+            if inLeg and ahead and pdOk
+                float score = fvgPick == PICK_NEAR ? (dir == -1 ? -nearE : nearE) : fvgPick == PICK_SWING ? (dir == -1 ? farE : -farE) : t - b
+                if na(bestScore) or score > bestScore
+                    bestScore := score
+                    bestLvl   := lvl
+                    bestTop   := t
+                    bestBot   := b
+                    bestT     := ft
+    [bestLvl, bestTop, bestBot, bestT]
+
+// ───────────── פקודות ─────────────
+f_exits(int dir, float sl, float t1, float t2, float t3, int q1, int q2, int q3, bool done1, bool done2) =>
+    string id = dir == 1 ? "Long" : "Short"
+    string p  = dir == 1 ? "L" : "S"
+    if q1 > 0 and not done1
+        strategy.exit(p + "-TP1", id, qty = q1, limit = t1, stop = sl, comment_profit = "TP1", comment_loss = "SL")
+    else
+        strategy.cancel(p + "-TP1")
+    if q2 > 0 and not done2
+        strategy.exit(p + "-TP2", id, qty = q2, limit = t2, stop = sl, comment_profit = "TP2", comment_loss = "SL")
+    else
+        strategy.cancel(p + "-TP2")
+    if q3 > 0
+        strategy.exit(p + "-TP3", id, qty = q3, limit = t3, stop = sl, comment_profit = "TP3", comment_loss = "SL")
+    else
+        strategy.cancel(p + "-TP3")
+    0
+
+f_cancelSide(int dir) =>
+    string p = dir == 1 ? "L" : "S"
+    strategy.cancel(dir == 1 ? "Long" : "Short")
+    strategy.cancel(p + "-TP1")
+    strategy.cancel(p + "-TP2")
+    strategy.cancel(p + "-TP3")
+    0
+
+// ───────────── מצב ─────────────
+// סטאפ: 0 = אין, 1 = ממתין ל-CISD, 2 = ממתין לכניסה ב-FVG
+var int   stDir    = 0
+var int   stStage  = 0
+var float stSwing  = na
+var int   stSwingT = na
+var float stPrev   = na
+var int   stPrevT  = na
+var float stCisd   = na
+var int   stArmT   = na
+var int   stCisdT  = na
+var float stExt    = na
+var line  lnCisd   = na
+var box   bxFvg    = na
+var int   bxArm    = na
+
+// פקודה ממתינה
+var int   pDir   = 0
+var float pEntry = na
+var float pStop  = na
+var int   pQty   = 0
+var int   pQ1    = 0
+var int   pQ2    = 0
+var int   pQ3    = 0
+var float pT1    = na
+var float pT2    = na
+var float pT3    = na
+
+// עסקה פתוחה
+var int   tDir   = 0
+var float tEntry = na
+var float tStop  = na
+var float tRisk  = na
+var int   tQty   = 0
+var int   tQ1    = 0
+var int   tQ2    = 0
+var int   tQ3    = 0
+var float tT1    = na
+var float tT2    = na
+var float tT3    = na
+var float tExt   = na
+var bool  done1  = false
+var bool  done2  = false
+
+// ───────────── זיהוי כניסה לעסקה ─────────────
+int lastEntryT = 0
+if strategy.opentrades > 0
+    lastEntryT := strategy.opentrades.entry_time(strategy.opentrades - 1)
+if strategy.closedtrades > 0
+    lastEntryT := math.max(lastEntryT, strategy.closedtrades.entry_time(strategy.closedtrades - 1))
+var int countedT = 0
+bool newEntry = lastEntryT > countedT
+
+if newEntry
+    countedT := lastEntryT
+    cSess  += 1
+    cDay   += 1
+    cWeek  += 1
+    cMonth += 1
+    tDir   := pDir
+    tEntry := pEntry
+    tStop  := pStop
+    tRisk  := math.abs(pEntry - pStop)
+    tQty   := pQty
+    tQ1    := pQ1
+    tQ2    := pQ2
+    tQ3    := pQ3
+    tT1    := pT1
+    tT2    := pT2
+    tT3    := pT3
+    tExt   := pEntry
+    done1  := false
+    done2  := false
+    stStage := 0
+    stDir   := 0
+    alert(str.format("{0} FILLED @ {1} | SL {2} | Qty {3}", tDir == 1 ? "LONG" : "SHORT", str.tostring(tEntry, format.mintick), str.tostring(tStop, format.mintick), tQty), alert.freq_once_per_bar_close)
+
+// ───────────── ניהול עסקה: יעדים חלקיים + קידום סטופ ─────────────
+if strategy.position_size != 0 and tDir != 0
+    int absPos = int(math.abs(strategy.position_size))
+    if not done1 and absPos <= tQty - tQ1
+        done1 := true
+    if not done2 and absPos <= tQty - tQ1 - tQ2
+        done2 := true
+    if not newEntry
+        tExt := tDir == 1 ? math.max(tExt, high) : math.min(tExt, low)
+    float curR = tDir * (tExt - tEntry) / tRisk
+    if be1On and curR >= be1At
+        float ns = tEntry + tDir * be1To * tRisk
+        tStop := tDir == 1 ? math.max(tStop, ns) : math.min(tStop, ns)
+    if be2On and curR >= be2At
+        float ns = tEntry + tDir * be2To * tRisk
+        tStop := tDir == 1 ? math.max(tStop, ns) : math.min(tStop, ns)
+    if be3On and curR >= be3At
+        float ns = tEntry + tDir * be3To * tRisk
+        tStop := tDir == 1 ? math.max(tStop, ns) : math.min(tStop, ns)
+    f_exits(tDir, tStop, tT1, tT2, tT3, tQ1, tQ2, tQ3, done1, done2)
+if strategy.position_size == 0 and not newEntry
+    tDir := 0
+
+// ───────────── מגבלה יומית + סוף סשן ─────────────
+float dayReal = strategy.netprofit - dayStart
+float dayTot  = dayReal + strategy.openprofit
+bool  lossHit = maxLoss > 0 and dayTot <= -maxLoss
+bool  profHit = maxProf > 0 and dayTot >= maxProf
+if (maxLoss > 0 and dayReal <= -maxLoss) or (maxProf > 0 and dayReal >= maxProf)
+    dayLock := true
+if closeLim and (lossHit or profHit)
+    dayLock := true
+    if strategy.position_size != 0
+        strategy.close_all(comment = lossHit ? "מגבלת הפסד יומית" : "יעד רווח יומי")
+
+if flatEnd and sessIdx != sessIdx[1] and sessIdx[1] > 0 and strategy.position_size != 0
+    strategy.close_all(comment = "סוף סשן")
+
+// ───────────── סטאפ: SMT → CISD ─────────────
+bool isFlat     = strategy.position_size == 0
+bool allowLong  = dirMode != DIR_SHORT
+bool allowShort = dirMode != DIR_LONG
+
+if bearSMT and allowShort and isFlat
+    stDir    := -1
+    stStage  := 1
+    stSwing  := mPH
+    stSwingT := mPT
+    stPrev   := mPrevPH
+    stPrevT  := mPrevPHt
+    stCisd   := mLowBtw
+    stArmT   := time
+    stExt    := mMinL
+    if (cisdMode == CISD_BODY ? mMinC : mMinL) < stCisd
+        stStage := 2
+        stCisdT := time
+    if showDraw
+        line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.red, width = 2)
+        label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
+        lnCisd := line.new(x1 = stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
+        if stStage == 2
+            label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
+
+if bullSMT and allowLong and isFlat
+    stDir    := 1
+    stStage  := 1
+    stSwing  := mPL
+    stSwingT := mPT
+    stPrev   := mPrevPL
+    stPrevT  := mPrevPLt
+    stCisd   := mHighBtw
+    stArmT   := time
+    stExt    := mMaxH
+    if (cisdMode == CISD_BODY ? mMaxC : mMaxH) > stCisd
+        stStage := 2
+        stCisdT := time
+    if showDraw
+        line.new(x1 = stPrevT, y1 = stPrev, x2 = stSwingT, y2 = stSwing, xloc = xloc.bar_time, color = color.lime, width = 2)
+        label.new(x = stSwingT, y = stSwing, text = "SMT", xloc = xloc.bar_time, style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
+        lnCisd := line.new(x1 = stPrevT, y1 = stCisd, x2 = time, y2 = stCisd, xloc = xloc.bar_time, color = color.orange, style = line.style_dashed, width = 2)
+        if stStage == 2
+            label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
+
+if stStage > 0 and isFlat
+    stExt := stDir == -1 ? math.min(stExt, low) : math.max(stExt, high)
+    bool beyond = stDir == -1 ? high > stSwing : low < stSwing
+    if beyond
+        // המחיר עבר את שיא/שפל ה-SMT — הסטאפ בוטל
+        stStage := 0
+        stDir   := 0
+    else if stStage == 1
+        if newHtf and time != stArmT
+            float c = cisdMode == CISD_BODY ? mC : stDir == -1 ? mL : mH
+            bool broke = stDir == -1 ? c < stCisd : c > stCisd
+            if broke
+                stStage := 2
+                stCisdT := time
+                if showDraw
+                    label.new(x = time, y = stCisd, text = "CISD", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
+            else if time - stArmT >= cisdWait * tfMs
+                stStage := 0
+                stDir   := 0
+        if showDraw and not na(lnCisd) and stStage >= 1
+            line.set_x2(lnCisd, time)
+    else if stStage == 2
+        if time - stCisdT >= entryWait * 60000
+            stStage := 0
+            stDir   := 0
+
+// ───────────── הצבת פקודת לימיט ב-FVG ─────────────
+bool canTrade = tfOk and sessIdx > 0 and not dayLock and cSess < maxSess and cDay < maxDay and cWeek < maxWeek and cMonth < maxMonth
+bool placed   = false
+var float alertedLvl = na
+
+if strategy.position_size == 0 and stStage == 2 and canTrade
+    float lvl  = na
+    float fTop = na
+    float fBot = na
+    int   fT   = na
+    if stDir == -1
+        [aL, aT, aB, aX] = f_pick(-1, bTop, bBot, bT, stSwing, stSwingT, stExt)
+        lvl  := aL
+        fTop := aT
+        fBot := aB
+        fT   := aX
+    else
+        [aL, aT, aB, aX] = f_pick(1, uTop, uBot, uT, stSwing, stSwingT, stExt)
+        lvl  := aL
+        fTop := aT
+        fBot := aB
+        fT   := aX
+    if not na(lvl)
+        float sl    = stSwing - stDir * slBuf * syminfo.mintick
+        float risk  = math.abs(lvl - sl)
+        float rTick = risk / syminfo.mintick
+        int   qty   = risk > 0 ? math.min(maxQty, int(math.floor(riskUsd / (risk * syminfo.pointvalue)))) : 0
+        int   q1    = math.min(qty, int(math.round(qty * tp1Pct / 100)))
+        int   q2    = math.min(qty - q1, int(math.round(qty * tp2Pct / 100)))
+        int   q3    = qty - q1 - q2
+        float t1    = lvl + stDir * tp1RR * risk
+        float t2    = lvl + stDir * tp2RR * risk
+        float t3    = lvl + stDir * tp3RR * risk
+        float lastT = q3 > 0 ? t3 : q2 > 0 ? t2 : t1
+        bool  tgtHit = cancelTgt and (stDir == -1 ? stExt <= lastT : stExt >= lastT)
+        if tgtHit
+            stStage := 0
+            stDir   := 0
+        else if qty >= 1 and rTick >= slMinT and rTick <= slMaxT
+            f_cancelSide(-stDir)
+            strategy.entry(stDir == 1 ? "Long" : "Short", stDir == 1 ? strategy.long : strategy.short, qty = qty, limit = lvl)
+            f_exits(stDir, sl, t1, t2, t3, q1, q2, q3, false, false)
+            placed := true
+            pDir   := stDir
+            pEntry := lvl
+            pStop  := sl
+            pQty   := qty
+            pQ1    := q1
+            pQ2    := q2
+            pQ3    := q3
+            pT1    := t1
+            pT2    := t2
+            pT3    := t3
+            if showDraw
+                if na(bxFvg) or bxArm != stArmT
+                    bxFvg := box.new(left = fT, top = fTop, right = time, bottom = fBot, xloc = xloc.bar_time, bgcolor = color.new(color.orange, 80), border_color = color.new(color.orange, 40))
+                    bxArm := stArmT
+                else
+                    box.set_lefttop(bxFvg, fT, fTop)
+                    box.set_rightbottom(bxFvg, time, fBot)
+            if na(alertedLvl) or lvl != alertedLvl
+                alert(str.format("{0} LIMIT @ {1} | SL {2} | TP {3} | Qty {4}", stDir == 1 ? "LONG" : "SHORT", str.tostring(lvl, format.mintick), str.tostring(sl, format.mintick), str.tostring(lastT, format.mintick), qty), alert.freq_once_per_bar_close)
+                alertedLvl := lvl
+
+if not placed and strategy.position_size == 0
+    f_cancelSide(1)
+    f_cancelSide(-1)
+
+// ───────────── תצוגה ─────────────
+bool inTrade = strategy.position_size != 0 and tDir != 0
+plot(inTrade ? tEntry : placed ? pEntry : na, "כניסה", color.new(color.white, 30), 1, plot.style_linebr)
+plot(inTrade ? tStop : placed ? pStop : na, "סטופ", color.red, 2, plot.style_linebr)
+plot(inTrade and tQ1 > 0 ? tT1 : placed and pQ1 > 0 ? pT1 : na, "TP1", color.teal, 1, plot.style_linebr)
+plot(inTrade and tQ2 > 0 ? tT2 : placed and pQ2 > 0 ? pT2 : na, "TP2", color.teal, 1, plot.style_linebr)
+plot(inTrade and tQ3 > 0 ? tT3 : placed and pQ3 > 0 ? pT3 : na, "TP3", color.lime, 2, plot.style_linebr)
+bgcolor(sessIdx > 0 ? color.new(color.blue, 94) : na, title = "סשן פעיל")
+
+f_row(table t, int r, string k, string v, color c) =>
+    table.cell(t, 0, r, k, text_color = color.silver, text_size = size.small, text_halign = text.align_right)
+    table.cell(t, 1, r, v, text_color = c, text_size = size.small)
+
+var table tbl = table.new(position.top_right, 2, 8, bgcolor = color.new(#131722, 10), border_color = color.new(color.gray, 70), border_width = 1)
+if showTbl and barstate.islast
+    string side   = stDir == -1 ? "שורט" : "לונג"
+    string status = strategy.position_size > 0 ? "בעסקת לונג" : strategy.position_size < 0 ? "בעסקת שורט" : stStage == 1 ? side + ": ממתין ל-CISD" : stStage == 2 ? (placed ? side + ": לימיט ב-FVG" : side + ": מחפש FVG") : "מחפש SMT"
+    f_row(tbl, 0, "סטטוס", status, color.white)
+    f_row(tbl, 1, "רווח/הפסד היום", str.tostring(dayTot, "#,##0.00") + " $", dayTot >= 0 ? color.lime : color.red)
+    f_row(tbl, 2, "עסקאות בסשן", str.tostring(cSess) + " / " + str.tostring(maxSess), color.white)
+    f_row(tbl, 3, "עסקאות היום", str.tostring(cDay) + " / " + str.tostring(maxDay), color.white)
+    f_row(tbl, 4, "עסקאות השבוע", str.tostring(cWeek) + " / " + str.tostring(maxWeek), color.white)
+    f_row(tbl, 5, "עסקאות החודש", str.tostring(cMonth) + " / " + str.tostring(maxMonth), color.white)
+    f_row(tbl, 6, "מסחר היום", dayLock ? "נעול (מגבלה יומית)" : "פתוח", dayLock ? color.orange : color.lime)
+    f_row(tbl, 7, "טיימפריים", tfOk ? "תקין" : "יש להריץ על גרף דקה", tfOk ? color.lime : color.red)
