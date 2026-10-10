@@ -415,19 +415,22 @@ if useLive and newHtf
         if array.size(pvLs) > 12
             array.shift(pvLs)
     // שיאים → SMT לשורט. אם כמה שיאים קודמים נותנים SMT — נבחר הגבוה ביותר (הנזילות המשמעותית).
-    // אותו שיא קודם יכול לתת SMT שוב, אם נוצר שיא חדש וגבוה יותר (אבל עדיין מתחתיו) אחרי שהסטאפ הקודם נגמר.
+    // אחרי שהסטאפ/העסקה מול שיא קודם נגמרו, הוא יכול לתת SMT שוב — רק אם נכס ההשוואה שובר אותו שוב והנכס שלי לא.
     if array.size(pvHs) > 0
         int   bestI  = -1
         float bestPx = na
         for i = 0 to array.size(pvHs) - 1
             Piv p = array.get(pvHs, i)
-            bool active = stStage > 0 and stDir == -1 and stPrevT == p.t
+            // סטאפ או עסקה פתוחה מול השיא הזה — לא נוגעים בו עד שייגמרו
+            bool active = stPrevT == p.t and ((stStage > 0 and stDir == -1) or strategy.position_size < 0)
             if p.used and not active
-                // הסטאפ הקודם מול השיא הזה נגמר בלי עסקה — מחפשים מולו שיא חדש
+                // הסטאפ הקודם מול השיא הזה נגמר — מחפשים מולו שיא חדש, עם שבירה חדשה של נכס ההשוואה
                 p.used  := false
                 p.again := true
                 p.ext   := na
                 p.extT  := na
+                p.x1    := na
+                p.x2    := na
             if na(p.ext) or mH > p.ext
                 p.cis  := p.run
                 p.ext  := mH
@@ -441,10 +444,10 @@ if useLive and newHtf
             bool sw2    = on2 and p.x2 > p.c2
             bool mainSw = p.ext > p.px
             bool typeA  = (sw1 or sw2) and not mainSw
-            bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
+            bool typeB  = not weak and not p.again and mainSw and ((on1 and not sw1) or (on2 and not sw2))
             bool tooOld = mT - p.t > maxDist * tfMs
             bool fresh  = not p.used and p.fires < 3 and (not p.again or mH < p.ext)
-            p.dead := tooOld or (mainSw and (weak or ((not on1 or sw1) and (not on2 or sw2))))
+            p.dead := tooOld or (mainSw and (weak or p.again or ((not on1 or sw1) and (not on2 or sw2))))
             if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
                 if bestI < 0 or p.px > bestPx
                     bestI  := i
@@ -472,12 +475,14 @@ if useLive and newHtf
         float bestPx = na
         for i = 0 to array.size(pvLs) - 1
             Piv p = array.get(pvLs, i)
-            bool active = stStage > 0 and stDir == 1 and stPrevT == p.t
+            bool active = stPrevT == p.t and ((stStage > 0 and stDir == 1) or strategy.position_size > 0)
             if p.used and not active
                 p.used  := false
                 p.again := true
                 p.ext   := na
                 p.extT  := na
+                p.x1    := na
+                p.x2    := na
             if na(p.ext) or mL < p.ext
                 p.cis  := p.run
                 p.ext  := mL
@@ -491,10 +496,10 @@ if useLive and newHtf
             bool sw2    = on2 and p.x2 < p.c2
             bool mainSw = p.ext < p.px
             bool typeA  = (sw1 or sw2) and not mainSw
-            bool typeB  = not weak and mainSw and ((on1 and not sw1) or (on2 and not sw2))
+            bool typeB  = not weak and not p.again and mainSw and ((on1 and not sw1) or (on2 and not sw2))
             bool tooOld = mT - p.t > maxDist * tfMs
             bool fresh  = not p.used and p.fires < 3 and (not p.again or mL > p.ext)
-            p.dead := tooOld or (mainSw and (weak or ((not on1 or sw1) and (not on2 or sw2))))
+            p.dead := tooOld or (mainSw and (weak or p.again or ((not on1 or sw1) and (not on2 or sw2))))
             if not p.dead and (typeA or typeB) and not na(p.cis) and fresh
                 if bestI < 0 or p.px < bestPx
                     bestI  := i
