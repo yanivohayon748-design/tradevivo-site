@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v30", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v31", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -10,7 +10,7 @@ strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v30", overlay = t
 //  1. SMT מול נכס/י השוואה (ברירת מחדל MES1!) — בטיימפריים של המודל (5 דק')
 //  2. CISD חיצוני — שבירת השפל שבין שני השיאים (או השיא שבין שני השפלים)
 //  3. כניסה בלימיט ב-FVG של גרף הדקה, סטופ מעבר לשיא/שפל ה-SMT
-//  יש להריץ על גרף דקה של הנכס הנסחר (למשל MNQ1! או NQ1!)
+//  יש להריץ על גרף דקה (או 5 דקות) של הנכס הנסחר (למשל MNQ1! או NQ1!)
 // ════════════════════════════════════════════════════════════════════
 
 // ───────────── קבועים ─────────────
@@ -75,7 +75,7 @@ cisdDef  = input.string(CDEF_LOW, "רמת ה-CISD", options = [CDEF_LOW, CDEF_IC
 needCisd = input.bool(true, "חובה לחכות ל-CISD לפני הכניסה", group = G3, tooltip = "כבוי: האסטרטגיה שמה לימיט ב-FVG מיד אחרי ה-SMT, בלי לחכות לשבירת ה-CISD.")
 cisdWait = input.int(12, "זמן מקס' לשבירת CISD (נרות מודל)", minval = 1, group = G3)
 
-entryTf   = input.string(ENT_1M, "גרף הכניסה (ה-FVG)", options = [ENT_1M, ENT_MODEL], group = G4, tooltip = "על איזה גרף מחפשים את ה-FVG של הכניסה.\nגרף דקה: FVG מנרות דקה.\nגרף 5 דק': FVG מנרות 5 דקות (החלון של X נרות נספר גם הוא בנרות 5 דקות). הלימיט עדיין מתמלא לפי נרות הדקה, כך שהמילוי מדויק.\nהאסטרטגיה תמיד רצה על גרף דקה.")
+entryTf   = input.string(ENT_1M, "גרף הכניסה (ה-FVG)", options = [ENT_1M, ENT_MODEL], group = G4, tooltip = "על איזה גרף מחפשים את ה-FVG של הכניסה.\nגרף דקה: FVG מנרות דקה.\nגרף 5 דק': FVG מנרות 5 דקות (החלון של X נרות נספר גם הוא בנרות 5 דקות). הלימיט עדיין מתמלא לפי נרות הדקה, כך שהמילוי מדויק.\nעל גרף 5 דקות שתי האפשרויות זהות (ה-FVG תמיד מנרות 5 דקות).")
 fvgPick   = input.string(PICK_MID, "איזה FVG", options = [PICK_MID, PICK_SWING, PICK_NEAR, PICK_BIG], group = G4, tooltip = "מבין ה-FVG-ים שנוצרו בתנועה מהשיא (בשורט) או מהשפל (בלונג):\nהאמצעי: עם 3 FVG-ים בוחר את האמצעי, עם 2 את העליון (בשורט).\nהעליון ביותר: הכי קרוב לשיא/שפל של ה-SMT.\nהקרוב למחיר: הראשון שהמחיר יגיע אליו.")
 fvgEdge   = input.string(EDGE_NEAR, "נקודת כניסה ב-FVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G4)
 fvgWin    = input.int(4, "FVG רק בתוך X נרות אחרי נר ה-SMT", minval = 1, group = G4, tooltip = "ה-FVG של הכניסה חייב להיווצר בנר של ה-SMT או ב-X הנרות שאחריו.")
@@ -155,8 +155,9 @@ type Piv
     int   fires   = 0
 
 // ───────────── נתוני המודל (5 דק') — ללא ריפיינט ─────────────
-// כל הערכים מוחזרים מהנר הסגור האחרון של טיימפריים המודל ([1] + lookahead_on)
-f_model(int L, int R) =>
+// כל הערכים מוחזרים מהנר הסגור האחרון של טיימפריים המודל ([1] + lookahead_on).
+// כשהגרף עצמו על טיימפריים המודל (5 דק') — o = 0: הנר הנוכחי, שנסגר כשהאסטרטגיה מחשבת.
+f_model(int L, int R, int o) =>
     float ph   = ta.pivothigh(high, L, R)
     float pl   = ta.pivotlow(low, L, R)
     int   pT   = time[R]
@@ -167,22 +168,24 @@ f_model(int L, int R) =>
     // פתיחת הנר הראשון ברצף הנרות העולים / היורדים האחרון (ל-CISD בשיטת ICT)
     float uro  = ta.valuewhen(close > open and not (close[1] > open[1]), open, 0)
     float dro  = ta.valuewhen(close < open and not (close[1] < open[1]), open, 0)
-    [ph[1], pl[1], pT[1], minC[1], minL[1], maxC[1], maxH[1], close[1], high[1], low[1], time[1], uro[1], dro[1], high[3], low[3], time[2]]
+    [ph[o], pl[o], pT[o], minC[o], minL[o], maxC[o], maxH[o], close[o], high[o], low[o], time[o], uro[o], dro[o], high[o + 2], low[o + 2], time[o + 1]]
 
 // נכס השוואה: פיבוטים (שיטת LuxAlgo) + שיא/שפל בחלון הפיבוט (שיטת חלון)
-f_cmp(int L, int R) =>
+f_cmp(int L, int R, int o) =>
     float ph = ta.pivothigh(high, L, R)
     float pl = ta.pivotlow(low, L, R)
     float hw = ta.highest(high, L + R + 1)
     float lw = ta.lowest(low, L + R + 1)
-    [ph[1], pl[1], hw[1], lw[1], time[1], high[1], low[1]]
+    [ph[o], pl[o], hw[o], lw[o], time[o], high[o], low[o]]
 
-[mPH, mPL, mPT, mMinC, mMinL, mMaxC, mMaxH, mC, mH, mL, mT, mURO, mDRO, mH3, mL3, mT2] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR), lookahead = barmerge.lookahead_on)
-[c1PH, c1PL, c1HiW, c1LoW, c1T, c1H5, c1L5] = request.security(cmp1, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
-[c2PH, c2PL, c2HiW, c2LoW, c2T, c2H5, c2L5] = request.security(cmp2, modelTf, f_cmp(pivL, pivR), lookahead = barmerge.lookahead_on)
+bool sameTf = timeframe.in_seconds() == timeframe.in_seconds(modelTf)
+int  mOff   = sameTf ? 0 : 1
+[mPH, mPL, mPT, mMinC, mMinL, mMaxC, mMaxH, mC, mH, mL, mT, mURO, mDRO, mH3, mL3, mT2] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
+[c1PH, c1PL, c1HiW, c1LoW, c1T, c1H5, c1L5] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
+[c2PH, c2PL, c2HiW, c2LoW, c2T, c2H5, c2L5] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
 
 bool newHtf = not na(mT) and mT != nz(mT[1])
-bool tfOk   = timeframe.in_seconds() < timeframe.in_seconds(modelTf)
+bool tfOk   = timeframe.in_seconds() <= timeframe.in_seconds(modelTf)
 int  tfMs   = timeframe.in_seconds(modelTf) * 1000
 
 // היסטוריית נרות המודל — לחישוב רמת ה-CISD (השפל/שיא שבין שני הפיבוטים)
@@ -1055,7 +1058,7 @@ var int   lockArm    = na
 
 string whyNow = ""
 if strategy.position_size == 0 and stStage == 2 and not canTrade
-    whyNow := not tfOk ? "הגרף לא על דקה" : sessIdx == 0 ? WHY_SESS : dayLock ? "נעול: מגבלה יומית" : "הגעת למקס' עסקאות"
+    whyNow := not tfOk ? "הגרף גדול מ-5 דק'" : sessIdx == 0 ? WHY_SESS : dayLock ? "נעול: מגבלה יומית" : "הגעת למקס' עסקאות"
 
 if strategy.position_size == 0 and stStage == 2 and canTrade
     if na(lockArm) or lockArm != stArmT
@@ -1168,7 +1171,7 @@ if showTbl and barstate.islast
     f_row(tbl, 4, "עסקאות השבוע", str.tostring(cWeek) + " / " + str.tostring(maxWeek), color.white)
     f_row(tbl, 5, "עסקאות החודש", str.tostring(cMonth) + " / " + str.tostring(maxMonth), color.white)
     f_row(tbl, 6, "מסחר היום", dayLock ? "נעול (מגבלה יומית)" : "פתוח", dayLock ? color.orange : color.lime)
-    f_row(tbl, 7, "טיימפריים", tfOk ? "תקין" : "יש להריץ על גרף דקה", tfOk ? color.lime : color.red)
+    f_row(tbl, 7, "טיימפריים", tfOk ? "תקין" : "הגרף חייב להיות 5 דק' או פחות", tfOk ? color.lime : color.red)
     f_row(tbl, 8, "── משפך סטאפים ──", "", color.silver)
     f_row(tbl, 9, "SMT-ים שזוהו", str.tostring(nSmt), color.white)
     f_row(tbl, 10, "עברו CISD", str.tostring(nCisd), color.white)
@@ -1181,4 +1184,4 @@ if showTbl and barstate.islast
     f_row(tbl, 17, "מתוכם: אין FVG / מחוץ לסשן", str.tostring(nNoFvg) + " / " + str.tostring(nOutSess), color.orange)
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
-    f_row(tbl, 20, "גרסת קוד", "v30", color.yellow)
+    f_row(tbl, 20, "גרסת קוד", "v31", color.yellow)
