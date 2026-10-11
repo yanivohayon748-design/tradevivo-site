@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v43", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v44", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -139,7 +139,7 @@ s4   = input.session("1630-1830", "", inline = "s4", group = G9)
 s5On = input.bool(true, "סשן 5 · ניו יורק צהריים", inline = "s5", group = G9)
 s5   = input.session("1830-2300", "", inline = "s5", group = G9)
 flatEnd = input.bool(false, "סגור פוזיציה בסוף הסשן", group = G9)
-armInSess = input.bool(true, "הסטאפ (SMT) חייב להיווצר בתוך סשן פעיל", group = G9, tooltip = "דלוק: SMT שנוצר בשעה שבה המסחר כבוי לא נלקח, גם אם הכניסה הייתה מגיעה אחר כך בתוך סשן. כך סשן כבוי (למשל ניו יורק בוקר) לא \"זולג\" לסשן הבא.")
+armInSess = input.bool(false, "הסטאפ (SMT) חייב להיווצר בתוך סשן פעיל", group = G9, tooltip = "דלוק: SMT שנוצר בשעה שבה המסחר כבוי לא נלקח, גם אם הכניסה הייתה מגיעה אחר כך בתוך סשן. כך סשן כבוי (למשל ניו יורק בוקר) לא \"זולג\" לסשן הבא.")
 flatOn  = input.bool(true, "סגירה אוטומטית בשעה", inline = "fl", group = G9, tooltip = "בשעה הזאת (לפי אזור הזמן למעלה) כל העסקאות הפתוחות נסגרות, פקודות ממתינות מבוטלות, ואין כניסות חדשות עד אחרי חצות. לתיקים ממומנים שדורשים להיות בלי פוזיציה עד 23:10.")
 flatH   = input.int(23, "", minval = 0, maxval = 23, inline = "fl", group = G9)
 flatM   = input.int(0, ":", minval = 0, maxval = 59, inline = "fl", group = G9)
@@ -1287,4 +1287,4 @@ if showTbl and barstate.islast
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 20, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 21, "גרסת קוד", "v43", color.yellow)
+    f_row(tbl, 21, "גרסת קוד", "v44", color.yellow)
