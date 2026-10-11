@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v8", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v9", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -132,7 +132,7 @@ showFail = input.bool(false, "הצג גם סטאפים שלא הגיעו להי�
 showTbl  = input.bool(true, "הצג טבלת סטטוס", group = G10)
 
 tpOn     = input.bool(false, "שלח פקודות ל-TradersPost (JSON)", group = G11, tooltip = "כשמסומן: כל התראה של האסטרטגיה היא פקודת JSON ל-TradersPost — כניסה עם סטופ ויעד, הזזת סטופ, סגירה חלקית, סגירה וביטול.\nבחלון ההתראה: Condition = האסטרטגיה, 'alert() function calls only', ו-Webhook URL של TradersPost.")
-tpTicker = input.string("", "סימול אצל הברוקר (ריק = הסימול של הגרף)", group = G11, tooltip = "למשל MNQZ2026 (חוזה דצמבר 2026). ריק = נשלח הסימול של הגרף (MNQ1!) ו-TradersPost בוחר את החוזה הקדמי.")
+tpTicker = input.string("", "סימול אצל הברוקר (ריק = החוזה הנוכחי)", group = G11, tooltip = "ריק = נשלח החוזה שמאחורי MNQ1! (למשל MNQZ2026) ומתחלף לבד בגלגול. אפשר לכתוב חוזה קבוע, למשל MNQZ2026.")
 tpDelay  = input.int(2, "השהיה בין ביטול לפקודה חדשה (שניות)", minval = 1, maxval = 30, group = G11)
 
 // רשומת שיא/שפל עבור זיהוי SMT חי
@@ -457,7 +457,8 @@ f_cancelSide(int dir) =>
 
 // ───────────── TradersPost (וובהוק JSON) ─────────────
 // כל הודעה נשלחת ב-alert() — בזמן אמת בלבד, בסגירת נר הגרף
-string tpSym = tpTicker == "" ? syminfo.ticker : tpTicker
+// ריק = החוזה הנוכחי שמאחורי הגרף הרציף (למשל MNQZ2026) — מתגלגל אוטומטית עם TradingView
+string tpSym = tpTicker != "" ? tpTicker : not na(syminfo.current_contract) ? syminfo.current_contract : syminfo.ticker
 
 f_px(float p) =>
     str.tostring(p, format.mintick)
@@ -982,12 +983,12 @@ if strategy.position_size == 0 and ((stStage == 2 and canTrade) or goMkt)
         if showDraw and goMkt
             label.new(x = time, y = close, text = "כניסה בשוק · " + str.tostring(qty) + " חוזים", xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_down : label.style_label_up, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
         if tpOn and (not tpLive or lvl != tpLvl or stDir != tpDirSent)
-            // כניסה עם סטופ ויעד אחרון (OCO אצל הברוקר); cancel=true מבטל לימיט קודם שעוד לא התמלא
+            // כניסה עם סטופ ויעד אחרון (OCO אצל הברוקר) כמרחק בנקודות ממחיר הכניסה; cancel=true מבטל לימיט קודם שעוד לא התמלא
             string side = stDir == 1 ? "buy" : "sell"
             string snt  = stDir == 1 ? "bullish" : "bearish"
             string lp   = goMkt ? "" : ",\"limitPrice\":" + f_px(lvl)
             string dly  = tpFlatBar ? ",\"delay\":" + str.tostring(tpDelay + 2) : ""
-            f_tpSend("\"action\":\"" + side + "\",\"sentiment\":\"" + snt + "\",\"orderType\":\"" + (goMkt ? "market" : "limit") + "\"" + lp + ",\"quantity\":" + str.tostring(qty) + ",\"stopLoss\":{\"type\":\"stop\",\"stopPrice\":" + f_px(sl) + "},\"takeProfit\":{\"limitPrice\":" + f_px(lastT) + "},\"cancel\":true,\"signalPrice\":" + f_px(close) + dly)
+            f_tpSend("\"action\":\"" + side + "\",\"sentiment\":\"" + snt + "\",\"orderType\":\"" + (goMkt ? "market" : "limit") + "\"" + lp + ",\"quantity\":" + str.tostring(qty) + ",\"stopLoss\":{\"type\":\"stop\",\"amount\":" + f_px(math.abs(lvl - sl)) + "},\"takeProfit\":{\"amount\":" + f_px(math.abs(lastT - lvl)) + "},\"cancel\":true,\"signalPrice\":" + f_px(close) + dly)
             tpLive    := true
             tpLvl     := lvl
             tpDirSent := stDir
@@ -1046,4 +1047,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v8 · TradersPost" : "IFVG v8", tpOn ? color.lime : color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v9 · TradersPost" : "IFVG v9", tpOn ? color.lime : color.yellow)
