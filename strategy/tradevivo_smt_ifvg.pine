@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v2", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v3", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -231,8 +231,8 @@ if newIb
         array.shift(bT)
         array.shift(bX)
 
-// ה-FVG האחרון שנוצר בתנועה אל השיא/שפל: אחרי השיא/שפל הקודם, לפני נר השיא/שפל עצמו,
-// ושלא התהפך עוד לפני השיא/שפל. מחזיר אינדקס או na.
+// ה-FVG האחרון שנוצר בתנועה אל השיא/שפל: אחרי השיא/שפל הקודם, עד נר השיא/שפל עצמו (כולל FVG
+// שנר השיא הוא הנר האמצעי שלו), ושלא התהפך עוד לפני השיא/שפל. מחזיר אינדקס או na.
 f_lastFvg(array<float> tops, array<int> ts, array<int> xs, int fromT, int swingBarT) =>
     int r = na
     int n = array.size(tops)
@@ -240,7 +240,7 @@ f_lastFvg(array<float> tops, array<int> ts, array<int> xs, int fromT, int swingB
         for i = n - 1 to 0
             int ft = array.get(ts, i)
             int fx = array.get(xs, i)
-            if ft < swingBarT and ft > nz(fromT) and (na(fx) or fx >= swingBarT)
+            if ft <= swingBarT and ft > nz(fromT) and (na(fx) or fx > swingBarT)
                 r := i
                 break
     r
@@ -662,7 +662,7 @@ f_mkCand() =>
     label l = na
     if showDraw and not na(cTop)
         b := box.new(left = cT, top = cTop, right = time, bottom = cBot, xloc = xloc.bar_time, bgcolor = color.new(color.gray, 80), border_color = color.new(color.gray, 40))
-        l := label.new(x = cT, y = stDir == -1 ? cBot : cTop, text = "FVG להיפוך", xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_upper_left : label.style_label_lower_left, color = color.new(color.gray, 30), textcolor = color.white, size = size.tiny)
+        l := label.new(x = cT, y = stDir == -1 ? cBot : cTop, text = "FVG להיפוך · " + str.format_time(cT, "HH:mm", tz), xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_upper_left : label.style_label_lower_left, color = color.new(color.gray, 30), textcolor = color.white, size = size.tiny)
     [b, l]
 
 // זמן ההיפוך של ה-FVG המועמד (na = עדיין לא התהפך)
@@ -797,7 +797,7 @@ if stStage > 0 and isFlat
             if showDraw and not na(bxF)
                 box.set_bgcolor(bxF, color.new(stDir == -1 ? color.red : color.lime, 75))
                 box.set_border_color(bxF, stDir == -1 ? color.red : color.lime)
-                label.set_text(lbF, "IFVG")
+                label.set_text(lbF, "IFVG · " + str.format_time(cT, "HH:mm", tz))
             if entryMode == ENT_MKT
                 if canTrade
                     goMkt := true
@@ -944,4 +944,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", "IFVG v2", color.yellow)
+    f_row(tbl, 19, "גרסת קוד", "IFVG v3", color.yellow)
