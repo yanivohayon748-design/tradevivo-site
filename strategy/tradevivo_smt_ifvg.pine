@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v3", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v4", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -261,6 +261,7 @@ var float cTop     = na
 var float cBot     = na
 var int   cT       = na
 var int   invT     = na
+var int   stSbT    = na         // זמן נר הגרף שעשה את השיא/שפל של ה-SMT
 var line  lnSmt    = na
 var label lbSmt    = na
 var box   bxF      = na
@@ -654,7 +655,7 @@ f_clearSetup() =>
 f_setCand() =>
     int sbT = f_swingBarTime(stSwing, stSwingT, stDir == -1)
     int ix  = stDir == -1 ? f_lastFvg(uTop, uT, uX, stPrevT, nz(sbT, stSwingT + tfMs)) : f_lastFvg(bTop, bT, bX, stPrevT, nz(sbT, stSwingT + tfMs))
-    [ix, na(ix) ? float(na) : stDir == -1 ? array.get(uTop, ix) : array.get(bTop, ix), na(ix) ? float(na) : stDir == -1 ? array.get(uBot, ix) : array.get(bBot, ix), na(ix) ? int(na) : stDir == -1 ? array.get(uT, ix) : array.get(bT, ix)]
+    [ix, na(ix) ? float(na) : stDir == -1 ? array.get(uTop, ix) : array.get(bTop, ix), na(ix) ? float(na) : stDir == -1 ? array.get(uBot, ix) : array.get(bBot, ix), na(ix) ? int(na) : stDir == -1 ? array.get(uT, ix) : array.get(bT, ix), nz(sbT, stSwingT + tfMs)]
 
 // ציור ה-FVG המועמד (מחזיר תיבה ותווית חדשות; את הישנות מוחקים לפני הקריאה)
 f_mkCand() =>
@@ -665,16 +666,28 @@ f_mkCand() =>
         l := label.new(x = cT, y = stDir == -1 ? cBot : cTop, text = "FVG להיפוך · " + str.format_time(cT, "HH:mm", tz), xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_upper_left : label.style_label_lower_left, color = color.new(color.gray, 30), textcolor = color.white, size = size.tiny)
     [b, l]
 
-// זמן ההיפוך של ה-FVG המועמד (na = עדיין לא התהפך)
-f_candX() =>
-    int r = na
-    array<int> ts = stDir == -1 ? uT : bT
-    array<int> xs = stDir == -1 ? uX : bX
-    if not na(cT) and array.size(ts) > 0
-        for i = array.size(ts) - 1 to 0
-            if array.get(ts, i) == cT
-                r := array.get(xs, i)
+// ה-FVG הראשון שהתהפך מבין ה-FVG-ים של התנועה אל השיא/שפל (מהשיא/שפל הקודם ועד נר השיא/שפל).
+// nowOnly = רק FVG שהתהפך בנר שנסגר עכשיו. כשכמה מתהפכים יחד — הקרוב לשיא/שפל.
+f_firstInv(bool nowOnly) =>
+    int   r    = na
+    int   bx   = na
+    float bk   = na
+    array<int>   ts = stDir == -1 ? uT : bT
+    array<int>   xs = stDir == -1 ? uX : bX
+    array<float> ks = stDir == -1 ? uTop : bBot
+    int n = array.size(ts)
+    if n > 0 and not na(stSbT)
+        for i = n - 1 to 0
+            int ft = array.get(ts, i)
+            if ft <= nz(stPrevT)
                 break
+            int fx = array.get(xs, i)
+            if ft <= stSbT and not na(fx) and fx > stSbT and (not nowOnly or (newIb and fx == iT))
+                float k = stDir == -1 ? array.get(ks, i) : -array.get(ks, i)
+                if na(r) or fx < bx or (fx == bx and k > bk)
+                    r  := i
+                    bx := fx
+                    bk := k
     r
 
 // ───────────── סטאפ חדש: SMT ─────────────
@@ -704,11 +717,12 @@ if lvBear and allowShort and isFlat and (stStage == 0 or okReplS)
     stExt    := low
     stStopRef := f_stopRef(stSwing, stSwingT, stLType, true)
     invT     := na
-    [a1, a2, a3, a4] = f_setCand()
+    [a1, a2, a3, a4, a5] = f_setCand()
     cI   := a1
     cTop := a2
     cBot := a3
     cT   := a4
+    stSbT := a5
     box.delete(bxF)
     label.delete(lbF)
     [ab, al] = f_mkCand()
@@ -734,11 +748,12 @@ if lvBull and allowLong and isFlat and (stStage == 0 or okReplL)
     stExt    := high
     stStopRef := f_stopRef(stSwing, stSwingT, stLType, false)
     invT     := na
-    [b1, b2, b3, b4] = f_setCand()
+    [b1, b2, b3, b4, b5] = f_setCand()
     cI   := b1
     cTop := b2
     cBot := b3
     cT   := b4
+    stSbT := b5
     box.delete(bxF)
     label.delete(lbF)
     [bb, bl] = f_mkCand()
@@ -761,11 +776,12 @@ if stStage > 0 and isFlat
             stSwing   := stDir == -1 ? mH : mL
             stSwingT  := mT
             stStopRef := f_stopRef(stSwing, stSwingT, stLType, stDir == -1)
-            [d1, d2, d3, d4] = f_setCand()
+            [d1, d2, d3, d4, d5] = f_setCand()
             cI   := d1
             cTop := d2
             cBot := d3
             cT   := d4
+            stSbT := d5
             box.delete(bxF)
             label.delete(lbF)
             [db, dl] = f_mkCand()
@@ -787,11 +803,18 @@ if stStage > 0 and isFlat
     else if stStage == 1
         if showDraw and not na(bxF)
             box.set_right(bxF, time)
-        bool inv = newIb and time != stArmT and not na(cTop) and (stDir == -1 ? iC < cBot : iC > cTop)
-        // ההיפוך כבר קרה אחרי השיא/שפל ולפני שה-SMT זוהה: בלימיט — מותר; בשוק — רק אם ההיפוך בנר שנסגר עכשיו
-        int  cx  = f_candX()
-        bool pre = time == stArmT and not na(cx) and (entryMode == ENT_LMT or (newIb and cx >= iT))
-        if inv or pre
+        // היפוך עכשיו של אחד מה-FVG-ים של התנועה; בנר שבו ה-SMT זוהה — גם היפוך שכבר קרה אחרי השיא/שפל
+        // (בלימיט — מותר; בשוק — רק אם ההיפוך בנר שנסגר עכשיו)
+        int ixI = time != stArmT ? f_firstInv(true) : f_firstInv(entryMode == ENT_MKT)
+        if not na(ixI)
+            cTop := stDir == -1 ? array.get(uTop, ixI) : array.get(bTop, ixI)
+            cBot := stDir == -1 ? array.get(uBot, ixI) : array.get(bBot, ixI)
+            cT   := stDir == -1 ? array.get(uT, ixI) : array.get(bT, ixI)
+            box.delete(bxF)
+            label.delete(lbF)
+            [ib, il] = f_mkCand()
+            bxF := ib
+            lbF := il
             invT  := time
             nInv  += 1
             if showDraw and not na(bxF)
@@ -944,4 +967,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", "IFVG v3", color.yellow)
+    f_row(tbl, 19, "גרסת קוד", "IFVG v4", color.yellow)
