@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v39", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v40", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -106,7 +106,7 @@ tp2Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp
 tp3RR  = input.float(6.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6, tooltip = "TP3 סוגר את כל מה שנשאר אחרי TP1 ו-TP2. ברירת המחדל: 0% ב-TP1 ו-TP2, כלומר כל הפוזיציה יוצאת ב-TP3.")
 
 be1On = input.bool(true, "שלב 1", inline = "be1", group = G7)
-be1At = input.float(3.0, "כשמגיעים ל-R", step = 0.1, inline = "be1", group = G7)
+be1At = input.float(2.0, "כשמגיעים ל-R", step = 0.1, inline = "be1", group = G7)
 be1To = input.float(0.0, "סטופ ל-R", step = 0.1, inline = "be1", group = G7, tooltip = "0 = נקודת הכניסה (Breakeven). 1 = רווח של 1R נעול.")
 be2On = input.bool(false, "שלב 2", inline = "be2", group = G7)
 be2At = input.float(2.0, "כשמגיעים ל-R", step = 0.1, inline = "be2", group = G7)
@@ -1285,4 +1285,4 @@ if showTbl and barstate.islast
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 20, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 21, "גרסת קוד", "v39", color.yellow)
+    f_row(tbl, 21, "גרסת קוד", "v40", color.yellow)
