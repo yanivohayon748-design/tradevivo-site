@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v4", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v5", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -825,7 +825,7 @@ if stStage > 0 and isFlat
                 if canTrade
                     goMkt := true
                 else
-                    f_endLabel(stDir, "IFVG מחוץ לשעות המסחר")
+                    f_endLabel(stDir, "IFVG בלי כניסה: " + (not tfOk ? "טיימפריים הגרף" : sessIdx == 0 ? "מחוץ לסשן" : flatNow ? "אחרי שעת הסגירה האוטומטית" : dayLock ? "נעול — מגבלה יומית" : "הגעת למקס' עסקאות"))
                     nCxSess += 1
                     stStage := 0
                     stDir   := 0
@@ -963,8 +963,8 @@ if showTbl and barstate.islast
     f_row(tbl, 12, "בוטל: המחיר עבר את השיא/שפל", str.tostring(nCxBeyond), color.orange)
     f_row(tbl, 13, "בוטל: נר חזר מעבר ל-IFVG", str.tostring(nCxKill), color.orange)
     f_row(tbl, 14, "בוטל: עבר זמן הכניסה", str.tostring(nCxWait), color.orange)
-    f_row(tbl, 15, "בוטל: סטופ קטן/גדול / מחוץ לשעות", str.tostring(nCxStop) + " / " + str.tostring(nCxSess), color.orange)
+    f_row(tbl, 15, "בוטל: סטופ קטן/גדול / אי אפשר לסחור", str.tostring(nCxStop) + " / " + str.tostring(nCxSess), color.orange)
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", "IFVG v4", color.yellow)
+    f_row(tbl, 19, "גרסת קוד", "IFVG v5", color.yellow)
