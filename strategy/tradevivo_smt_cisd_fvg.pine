@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v37", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v38", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -103,7 +103,7 @@ tp1RR  = input.float(1.0, "TP1 — RR", minval = 0.1, step = 0.1, inline = "tp1"
 tp1Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
 tp2RR  = input.float(2.0, "TP2 — RR", minval = 0.1, step = 0.1, inline = "tp2", group = G6)
 tp2Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp2", group = G6)
-tp3RR  = input.float(5.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6, tooltip = "TP3 סוגר את כל מה שנשאר אחרי TP1 ו-TP2. ברירת המחדל: 0% ב-TP1 ו-TP2, כלומר כל הפוזיציה יוצאת ב-TP3.")
+tp3RR  = input.float(6.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6, tooltip = "TP3 סוגר את כל מה שנשאר אחרי TP1 ו-TP2. ברירת המחדל: 0% ב-TP1 ו-TP2, כלומר כל הפוזיציה יוצאת ב-TP3.")
 
 be1On = input.bool(true, "שלב 1", inline = "be1", group = G7)
 be1At = input.float(3.0, "כשמגיעים ל-R", step = 0.1, inline = "be1", group = G7)
@@ -120,7 +120,7 @@ maxDay   = input.int(20, "מקס' עסקאות ליום", minval = 1, group = G8
 maxWeek  = input.int(100, "מקס' עסקאות לשבוע", minval = 1, group = G8)
 maxMonth = input.int(400, "מקס' עסקאות לחודש", minval = 1, group = G8)
 maxLoss  = input.float(0, "מקס' הפסד יומי ($)  0 = ללא", minval = 0, group = G8)
-maxProf  = input.float(1500, "מקס' רווח יומי ($)  0 = ללא", minval = 0, group = G8)
+maxProf  = input.float(0, "מקס' רווח יומי ($)  0 = ללא", minval = 0, group = G8)
 maxWinD  = input.int(0, "מקס' עסקאות מנצחות ביום  0 = ללא", minval = 0, group = G8, tooltip = "אחרי X עסקאות ברווח באותו יום — לא נכנסים יותר עד מחר. עסקה עם יציאות חלקיות נספרת פעם אחת, לפי הרווח הכולל שלה.")
 maxLossD = input.int(2, "מקס' עסקאות מפסידות ביום  0 = ללא", minval = 0, group = G8, tooltip = "אחרי X עסקאות בהפסד באותו יום — לא נכנסים יותר עד מחר. עסקה שנסגרה באפס (ברייק-איבן) לא נספרת.")
 closeLim = input.bool(true, "סגור פוזיציה פתוחה כשמגיעים למגבלה היומית", group = G8)
@@ -1285,4 +1285,4 @@ if showTbl and barstate.islast
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 20, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 21, "גרסת קוד", "v37", color.yellow)
+    f_row(tbl, 21, "גרסת קוד", "v38", color.yellow)
