@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v9", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v10", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -44,7 +44,7 @@ string G7 = "קידום סטופ לפי RR"
 string G8 = "מגבלות"
 string G9 = "סשנים"
 string G10 = "תצוגה"
-string G11 = "חיבור TradersPost"
+string G11 = "התראות וחיבור TradersPost"
 
 // ───────────── הגדרות ─────────────
 dirMode  = input.string(DIR_BOTH, "כיוון מסחר", options = [DIR_BOTH, DIR_LONG, DIR_SHORT], group = G1)
@@ -131,6 +131,7 @@ showPos  = input.bool(true, "הצג כלי פוזיציה על כל עסקה", g
 showFail = input.bool(false, "הצג גם סטאפים שלא הגיעו להיפוך", group = G10)
 showTbl  = input.bool(true, "הצג טבלת סטטוס", group = G10)
 
+ntOn     = input.bool(true, "הודעות לטלפון (SMT, כניסה, סטופ, יעד)", group = G11, tooltip = "הודעות טקסט בעברית: נוצר SMT, נכנס לעסקה, סטופ קודם לכניסה, פגע בסטופ / בסטופ כניסה, נלקח TP מלא.\nכל ההתראות של עותק אסטרטגיה יוצאות באותה התראה — לכן להודעות ול-TradersPost שמים שני עותקים על הגרף: אחד עם הודעות בלבד ואחד עם TradersPost בלבד.")
 tpOn     = input.bool(false, "שלח פקודות ל-TradersPost (JSON)", group = G11, tooltip = "כשמסומן: כל התראה של האסטרטגיה היא פקודת JSON ל-TradersPost — כניסה עם סטופ ויעד, הזזת סטופ, סגירה חלקית, סגירה וביטול.\nבחלון ההתראה: Condition = האסטרטגיה, 'alert() function calls only', ו-Webhook URL של TradersPost.")
 tpTicker = input.string("", "סימול אצל הברוקר (ריק = החוזה הנוכחי)", group = G11, tooltip = "ריק = נשלח החוזה שמאחורי MNQ1! (למשל MNQZ2026) ומתחלף לבד בגלגול. אפשר לכתוב חוזה קבוע, למשל MNQZ2026.")
 tpDelay  = input.int(2, "השהיה בין ביטול לפקודה חדשה (שניות)", minval = 1, maxval = 30, group = G11)
@@ -463,6 +464,11 @@ string tpSym = tpTicker != "" ? tpTicker : not na(syminfo.current_contract) ? sy
 f_px(float p) =>
     str.tostring(p, format.mintick)
 
+f_nt(string msg) =>
+    if ntOn
+        alert(msg, alert.freq_all)
+    0
+
 f_tpSend(string body) =>
     if tpOn
         alert("{\"ticker\":\"" + tpSym + "\"," + body + "}", alert.freq_all)
@@ -476,6 +482,9 @@ var float tpStopSent = na
 var bool  tpD1Sent   = false
 var bool  tpD2Sent   = false
 bool      tpFlatBar  = false  // נשלחה בנר הזה פקודת סגירה
+var bool  ntBe       = false  // הסטופ כבר קודם לכניסה בעסקה הנוכחית
+var float ntNp0      = 0.0    // הרווח הנקי לפני העסקה
+var int   ntSmtT     = na     // ה-SMT האחרון שנשלחה עליו הודעה
 
 // ───────────── מצב עסקה ─────────────
 var int   pDir   = 0
@@ -559,8 +568,9 @@ if newEntry
     tpStopSent := pStop
     tpD1Sent   := false
     tpD2Sent   := false
-    if not tpOn
-        alert(str.format("{0} FILLED @ {1} | SL {2} | Qty {3}", tDir == 1 ? "LONG" : "SHORT", str.tostring(tEntry, format.mintick), str.tostring(tStop, format.mintick), tQty), alert.freq_once_per_bar_close)
+    ntBe  := false
+    ntNp0 := nz(strategy.netprofit[1])
+    f_nt("בוט SMT נכנס לעסקה · " + (tDir == 1 ? "לונג" : "שורט") + " " + str.tostring(tQty) + " חוזים @ " + f_px(tEntry) + " · סטופ " + f_px(tStop) + " · יעד " + f_px(tQ3 > 0 ? tT3 : tQ2 > 0 ? tT2 : tT1))
 
 // כלי פוזיציה על כל עסקה
 var box pbRed = na
@@ -593,6 +603,9 @@ if strategy.position_size != 0 and tDir != 0
         float ns = tEntry + tDir * be3To * tRisk
         tStop := tDir == 1 ? math.max(tStop, ns) : math.min(tStop, ns)
     f_exits(tDir, tStop, tT1, tT2, tT3, tQ1, tQ2, tQ3, done1, done2)
+    if not ntBe and tDir * (tStop - tEntry) >= 0
+        ntBe := true
+        f_nt("2RR נלקחו, הסטופ קודם לכניסה · " + f_px(tStop))
 if strategy.position_size == 0 and not newEntry
     tDir := 0
 
@@ -638,6 +651,13 @@ if tpLive and (tvClosed or tpFlatCall)
     f_tpSend("\"action\":\"cancel\",\"delay\":" + str.tostring(tpDelay + 1))
     tpLive    := false
     tpFlatBar := true
+
+// הודעה על סגירת העסקה
+if tvClosed and strategy.closedtrades > 0
+    string ec  = strategy.closedtrades.exit_comment(strategy.closedtrades - 1)
+    float  tpl = strategy.netprofit - ntNp0
+    string res = ec == "TP3" or (ec == "TP2" and tQ3 == 0) or (ec == "TP1" and tQ2 + tQ3 == 0) ? "נלקח TP מלא" : ec == "SL" ? (ntBe ? "פגע בסטופ כניסה" : "סטופ") : "העסקה נסגרה: " + ec
+    f_nt(res + " · " + (tpl >= 0 ? "+" : "-") + "$" + str.tostring(math.abs(tpl), "#,##0"))
 
 // הסטופ זז / יעד חלקי מומש / יש יעדים חלקיים → מבטלים הכול ושולחים מחדש: סטופ על כל היתרה + לימיט לכל יעד שנשאר
 if tpLive and strategy.position_size != 0 and tDir != 0
@@ -830,6 +850,11 @@ if lvBull and allowLong and isFlat and (stStage == 0 or okReplL)
 
 // ───────────── שלב 1: מחכים להיפוך ─────────────
 bool canTrade = tfOk and sessIdx > 0 and not flatNow and not dayLock and cSess < maxSess and cDay < maxDay and cWeek < maxWeek and cMonth < maxMonth
+
+// הודעה: SMT בשעות המסחר עם FVG מועמד להיפוך — יכול להוביל לטריגר
+if stStage == 1 and canTrade and not na(cTop) and stArmT != nz(ntSmtT)
+    ntSmtT := stArmT
+    f_nt("נוצר SMT, יכול להיווצר טריגר בקרוב · " + (stDir == 1 ? "לונג" : "שורט") + " · שפל/שיא " + f_px(stSwing))
 bool goMkt    = false
 var string whyNot = ""
 
@@ -992,9 +1017,6 @@ if strategy.position_size == 0 and ((stStage == 2 and canTrade) or goMkt)
             tpLive    := true
             tpLvl     := lvl
             tpDirSent := stDir
-        if not tpOn and (na(alertedLvl) or lvl != alertedLvl)
-            alert(str.format("{0} {1} @ {2} | SL {3} | TP {4} | Qty {5}", stDir == 1 ? "LONG" : "SHORT", goMkt ? "MARKET" : "LIMIT", str.tostring(lvl, format.mintick), str.tostring(sl, format.mintick), str.tostring(lastT, format.mintick), qty), alert.freq_once_per_bar_close)
-            alertedLvl := lvl
 
 if whyNow != ""
     whyNot := whyNow
@@ -1047,4 +1069,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v9 · TradersPost" : "IFVG v9", tpOn ? color.lime : color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v10 · TradersPost" : "IFVG v10", tpOn ? color.lime : color.yellow)
