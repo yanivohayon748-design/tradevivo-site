@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v41", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v42", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -94,8 +94,8 @@ riskUsd  = input.float(300, "סיכון קבוע לעסקה ($)", minval = 1, gr
 qtyRound = input.string(RND_UP, "עיגול מספר החוזים", options = [RND_NEAR, RND_UP, RND_DOWN], group = G5, tooltip = "מספר החוזים = סיכון $ ÷ (מרחק הסטופ × שווי נקודה). כשיוצא מספר לא שלם, כך הוא מעוגל. עיגול למעלה יכול לסכן קצת יותר מהסכום שהוגדר.")
 maxQty   = input.int(20, "מקסימום חוזים", minval = 1, group = G5)
 slBuf    = input.int(2, "מרווח סטופ מעבר לשיא/שפל (טיקים)", minval = 0, group = G5)
-slMinT   = input.int(8, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
-slMaxT   = input.int(160, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
+slMinT   = input.int(40, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
+slMaxT   = input.int(120, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
 stopB    = input.string(STOP_STRUCT, "סטופ כשנאסד\"ק לקח את הנזילות ו-MES לא", options = [STOP_NORM, STOP_STRUCT], group = G5, tooltip = "לונג: MNQ שבר את השפל ו-MES לא. שורט: MNQ שבר את השיא ו-MES לא.\nבמקרים האלה נאסד\"ק עלול להמשיך ולקחת את הסטופ, אז הסטופ יכול לשבת מבנה אחד מעבר: השפל (בלונג) / השיא (בשורט) הקודם בגרף 5 דקות שנמצא מעבר לשפל/שיא ה-SMT. הסיכון בדולרים לא משתנה — פשוט פחות חוזים.\nאם אין מבנה כזה — סטופ רגיל.")
 structK  = input.int(3, "גודל מבנה (נרות 5 דק' מכל צד)", minval = 1, group = G5, tooltip = "שפל/שיא נחשב מבנה אם הוא הנמוך/הגבוה ביותר מבין X נרות 5 דקות מכל צד שלו.")
 
@@ -103,7 +103,7 @@ tp1RR  = input.float(1.0, "TP1 — RR", minval = 0.1, step = 0.1, inline = "tp1"
 tp1Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
 tp2RR  = input.float(2.0, "TP2 — RR", minval = 0.1, step = 0.1, inline = "tp2", group = G6)
 tp2Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp2", group = G6)
-tp3RR  = input.float(6.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6, tooltip = "TP3 סוגר את כל מה שנשאר אחרי TP1 ו-TP2. ברירת המחדל: 0% ב-TP1 ו-TP2, כלומר כל הפוזיציה יוצאת ב-TP3.")
+tp3RR  = input.float(4.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6, tooltip = "TP3 סוגר את כל מה שנשאר אחרי TP1 ו-TP2. ברירת המחדל: 0% ב-TP1 ו-TP2, כלומר כל הפוזיציה יוצאת ב-TP3.")
 
 be1On = input.bool(true, "שלב 1", inline = "be1", group = G7)
 be1At = input.float(2.0, "כשמגיעים ל-R", step = 0.1, inline = "be1", group = G7)
@@ -126,14 +126,15 @@ maxLossD = input.int(2, "מקס' עסקאות מפסידות ביום  0 = לל�
 closeLim = input.bool(true, "סגור פוזיציה פתוחה כשמגיעים למגבלה היומית", group = G8)
 
 tz   = input.string("Asia/Jerusalem", "אזור זמן (שעון ישראל)", group = G9, tooltip = "כל שעות הסשנים לפי אזור הזמן הזה. Asia/Jerusalem = שעון ישראל, America/New_York = שעון ניו יורק.")
-// ברירת מחדל לפי ניתוח הבקטסט: בלי 06:00–09:00, בלי 13:00–14:00 ובלי 15:30–16:30
+// ברירת מחדל לפי מחקר על שנתיים (10.2024–10.2026): פעילים רק אסיה, לונדון בוקר וניו יורק צהריים.
+// 14:00–15:30 וניו יורק בוקר חלשים בשתי השנים — נשארים כאן כבויים, לבדיקה
 s1On = input.bool(true, "סשן 1 · אסיה", inline = "s1", group = G9)
 s1   = input.session("0130-0600", "", inline = "s1", group = G9)
 s2On = input.bool(true, "סשן 2 · לונדון בוקר", inline = "s2", group = G9)
 s2   = input.session("0900-1300", "", inline = "s2", group = G9)
-s3On = input.bool(true, "סשן 3 · לונדון צהריים", inline = "s3", group = G9)
+s3On = input.bool(false, "סשן 3 · לונדון צהריים", inline = "s3", group = G9)
 s3   = input.session("1400-1530", "", inline = "s3", group = G9)
-s4On = input.bool(true, "סשן 4 · ניו יורק בוקר", inline = "s4", group = G9)
+s4On = input.bool(false, "סשן 4 · ניו יורק בוקר", inline = "s4", group = G9)
 s4   = input.session("1630-1830", "", inline = "s4", group = G9)
 s5On = input.bool(true, "סשן 5 · ניו יורק צהריים", inline = "s5", group = G9)
 s5   = input.session("1830-2300", "", inline = "s5", group = G9)
@@ -1285,4 +1286,4 @@ if showTbl and barstate.islast
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 20, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 21, "גרסת קוד", "v41", color.yellow)
+    f_row(tbl, 21, "גרסת קוד", "v42", color.yellow)
