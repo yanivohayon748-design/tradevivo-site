@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v7", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v8", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -69,8 +69,8 @@ mktFb     = input.bool(true, "בשוק: אם הסטופ גדול מדי — לי
 invKill   = input.bool(true, "ביטול הלימיט אם נר נסגר בחזרה מעבר ל-IFVG", group = G3, tooltip = "בשורט: נר בטיימפריים של ה-IFVG נסגר מעל החלק העליון של האזור — ה-IFVG נכשל והלימיט מבוטל.")
 cancelTgt = input.bool(false, "ביטול אם המחיר הגיע ליעד לפני הכניסה", group = G3)
 
-riskUsd  = input.float(300, "סיכון קבוע לעסקה ($)", minval = 1, group = G5)
-qtyRound = input.string(RND_UP, "עיגול מספר החוזים", options = [RND_NEAR, RND_UP, RND_DOWN], group = G5)
+riskUsd  = input.float(425, "סיכון קבוע לעסקה ($)", minval = 1, group = G5)
+qtyRound = input.string(RND_DOWN, "עיגול מספר החוזים", options = [RND_NEAR, RND_UP, RND_DOWN], group = G5)
 maxQty   = input.int(20, "מקסימום חוזים", minval = 1, group = G5)
 slBuf    = input.int(2, "מרווח סטופ מעבר לשיא/שפל (טיקים)", minval = 0, group = G5)
 slMinT   = input.int(40, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
@@ -79,7 +79,7 @@ stopB    = input.string(STOP_STRUCT, "סטופ כשנאסד\"ק לקח את הנ
 structK  = input.int(3, "גודל מבנה (נרות SMT מכל צד)", minval = 1, group = G5)
 
 tp1RR  = input.float(2.0, "TP1 — RR", minval = 0.1, step = 0.1, inline = "tp1", group = G6)
-tp1Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
+tp1Pct = input.float(50, "% לסגירה", minval = 0, maxval = 100, inline = "tp1", group = G6)
 tp2RR  = input.float(3.0, "TP2 — RR", minval = 0.1, step = 0.1, inline = "tp2", group = G6)
 tp2Pct = input.float(0, "% לסגירה", minval = 0, maxval = 100, inline = "tp2", group = G6)
 tp3RR  = input.float(4.0, "TP3 — RR (כל היתרה)", minval = 0.1, step = 0.1, group = G6)
@@ -104,7 +104,7 @@ maxSess  = input.int(20, "מקס' עסקאות לסשן", minval = 1, group = G8
 maxDay   = input.int(20, "מקס' עסקאות ליום", minval = 1, group = G8)
 maxWeek  = input.int(100, "מקס' עסקאות לשבוע", minval = 1, group = G8)
 maxMonth = input.int(400, "מקס' עסקאות לחודש", minval = 1, group = G8)
-maxLoss  = input.float(0, "מקס' הפסד יומי ($)  0 = ללא", minval = 0, group = G8)
+maxLoss  = input.float(900, "מקס' הפסד יומי ($)  0 = ללא", minval = 0, group = G8)
 maxProf  = input.float(0, "מקס' רווח יומי ($)  0 = ללא", minval = 0, group = G8)
 maxWinD  = input.int(0, "מקס' עסקאות מנצחות ביום  0 = ללא", minval = 0, group = G8)
 maxLossD = input.int(2, "מקס' עסקאות מפסידות ביום  0 = ללא", minval = 0, group = G8)
@@ -1046,4 +1046,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v7 · TradersPost" : "IFVG v7", tpOn ? color.lime : color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v8 · TradersPost" : "IFVG v8", tpOn ? color.lime : color.yellow)
