@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v5", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v6", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -47,8 +47,8 @@ string G10 = "תצוגה"
 
 // ───────────── הגדרות ─────────────
 dirMode  = input.string(DIR_BOTH, "כיוון מסחר", options = [DIR_BOTH, DIR_LONG, DIR_SHORT], group = G1)
-modelTf  = input.timeframe("5", "טיימפריים של ה-SMT", options = ["5", "15"], group = G1)
-ifvgTf   = input.timeframe("1", "טיימפריים של ה-IFVG", options = ["1", "2", "3", "5"], group = G1, tooltip = "על אילו נרות מחפשים את ה-FVG ואת ההיפוך שלו. הגרף עצמו צריך להיות בטיימפריים הזה או קטן ממנו (מומלץ גרף דקה).")
+modelTf  = input.timeframe("15", "טיימפריים של ה-SMT", options = ["5", "15"], group = G1)
+ifvgTf   = input.timeframe("3", "טיימפריים של ה-IFVG", options = ["1", "2", "3", "5"], group = G1, tooltip = "על אילו נרות מחפשים את ה-FVG ואת ההיפוך שלו. הגרף עצמו צריך להיות בטיימפריים הזה או קטן ממנו (מומלץ גרף דקה).")
 
 cmp1On   = input.bool(true, "", inline = "c1", group = G2)
 cmp1     = input.symbol("CME_MINI:MES1!", "נכס השוואה 1", inline = "c1", group = G2)
@@ -59,7 +59,7 @@ pivR     = input.int(6, "Pivot — נרות מימין (אישור)", minval = 1
 maxDist  = input.int(100, "מרחק מקס' בין שני השיאים (נרות)", minval = 3, group = G2)
 smtMode  = input.string(SMT_WEAK, "סוג SMT", options = [SMT_BOTH, SMT_WEAK], group = G2, tooltip = "רק הנכס שלי לא שובר: בשורט — MES עבר את השיא ו-MNQ לא. בלונג — MES שבר את השפל ו-MNQ לא.\nשני הכיוונים: גם המצב ההפוך (MNQ שובר ו-MES לא).")
 
-entryMode = input.string(ENT_LMT, "כניסה", options = [ENT_MKT, ENT_LMT], group = G3, tooltip = "בשוק: נכנסים מיד כשנר בטיימפריים של ה-IFVG נסגר מעבר ל-FVG.\nלימיט: אחרי ההיפוך שמים לימיט באזור ה-IFVG ומחכים שהמחיר יחזור אליו.")
+entryMode = input.string(ENT_MKT, "כניסה", options = [ENT_MKT, ENT_LMT], group = G3, tooltip = "בשוק: נכנסים מיד כשנר בטיימפריים של ה-IFVG נסגר מעבר ל-FVG.\nלימיט: אחרי ההיפוך שמים לימיט באזור ה-IFVG ומחכים שהמחיר יחזור אליו.")
 fvgEdge   = input.string(EDGE_NEAR, "נקודת הלימיט באזור ה-IFVG", options = [EDGE_NEAR, EDGE_MID, EDGE_FAR], group = G3, tooltip = "רק בכניסת לימיט. בשורט: קצה קרוב = תחתית האזור (המחיר מגיע אליה ראשונה), קצה רחוק = החלק העליון.")
 fvgMinT   = input.int(2, "גודל FVG מינ' (טיקים)", minval = 1, group = G3)
 invWait   = input.int(12, "זמן מקס' להיפוך אחרי ה-SMT (נרות SMT)", minval = 1, group = G3)
@@ -73,7 +73,7 @@ qtyRound = input.string(RND_UP, "עיגול מספר החוזים", options = [R
 maxQty   = input.int(20, "מקסימום חוזים", minval = 1, group = G5)
 slBuf    = input.int(2, "מרווח סטופ מעבר לשיא/שפל (טיקים)", minval = 0, group = G5)
 slMinT   = input.int(40, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
-slMaxT   = input.int(160, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
+slMaxT   = input.int(420, "סטופ מקסימלי (טיקים)", minval = 1, group = G5)
 stopB    = input.string(STOP_STRUCT, "סטופ כשנאסד\"ק לקח את הנזילות ו-MES לא", options = [STOP_NORM, STOP_STRUCT], group = G5, tooltip = "לונג: MNQ שבר את השפל ו-MES לא. שורט: MNQ שבר את השיא ו-MES לא. הסטופ יושב מבנה אחד מעבר (השפל/שיא הקודם בטיימפריים של ה-SMT).")
 structK  = input.int(3, "גודל מבנה (נרות SMT מכל צד)", minval = 1, group = G5)
 
@@ -114,15 +114,15 @@ s1On = input.bool(true, "סשן 1 · אסיה", inline = "s1", group = G9)
 s1   = input.session("0130-0600", "", inline = "s1", group = G9)
 s2On = input.bool(true, "סשן 2 · לונדון בוקר", inline = "s2", group = G9)
 s2   = input.session("0900-1300", "", inline = "s2", group = G9)
-s3On = input.bool(false, "סשן 3 · לונדון צהריים", inline = "s3", group = G9)
+s3On = input.bool(true, "סשן 3 · לונדון צהריים", inline = "s3", group = G9)
 s3   = input.session("1400-1530", "", inline = "s3", group = G9)
-s4On = input.bool(false, "סשן 4 · ניו יורק בוקר", inline = "s4", group = G9)
+s4On = input.bool(true, "סשן 4 · ניו יורק בוקר", inline = "s4", group = G9)
 s4   = input.session("1630-1830", "", inline = "s4", group = G9)
 s5On = input.bool(true, "סשן 5 · ניו יורק צהריים", inline = "s5", group = G9)
 s5   = input.session("1830-2300", "", inline = "s5", group = G9)
 flatEnd = input.bool(false, "סגור פוזיציה בסוף הסשן", group = G9)
-flatOn  = input.bool(true, "סגירה אוטומטית בשעה", inline = "fl", group = G9)
-flatH   = input.int(23, "", minval = 0, maxval = 23, inline = "fl", group = G9)
+flatOn  = input.bool(true, "סגירה אוטומטית בשעה (שעון ניו יורק)", inline = "fl", group = G9, tooltip = "השעה לפי שעון ניו יורק, כך שהסגירה תמיד לפני סגירת הבורסה (17:00 ניו יורק) — גם בשבועות שבהם ישראל וארה\"ב עוברות שעון בתאריכים שונים. 16:00 ניו יורק = 23:00 בישראל ברוב השנה. מהשעה הזאת ועד פתיחת הבורסה (18:00 ניו יורק) אין כניסות חדשות.")
+flatH   = input.int(16, "", minval = 0, maxval = 23, inline = "fl", group = G9)
 flatM   = input.int(0, ":", minval = 0, maxval = 59, inline = "fl", group = G9)
 
 showDraw = input.bool(true, "הצג SMT / FVG / IFVG על הגרף", group = G10)
@@ -586,10 +586,11 @@ if closeLim and (lossHit or profHit)
     if strategy.position_size != 0
         strategy.close_all(comment = lossHit ? "מגבלת הפסד יומית" : "יעד רווח יומי")
 
-int  barEndMin = hour(time_close, tz) * 60 + minute(time_close, tz)
-bool flatNow   = flatOn and not na(time_close) and barEndMin >= flatH * 60 + flatM
+// לפי שעון ניו יורק: מהשעה שנקבעה ועד פתיחת הבורסה מחדש (18:00 ניו יורק)
+int  barEndMin = hour(time_close, "America/New_York") * 60 + minute(time_close, "America/New_York")
+bool flatNow   = flatOn and not na(time_close) and barEndMin >= flatH * 60 + flatM and barEndMin < 18 * 60
 if flatNow and strategy.position_size != 0
-    strategy.close_all(comment = "סגירה אוטומטית " + str.format("{0,number,00}:{1,number,00}", flatH, flatM))
+    strategy.close_all(comment = "סגירה אוטומטית " + str.format("{0,number,00}:{1,number,00}", flatH, flatM) + " NY")
 if flatEnd and sessIdx != sessIdx[1] and sessIdx[1] > 0 and strategy.position_size != 0
     strategy.close_all(comment = "סוף סשן")
 
@@ -967,4 +968,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", "IFVG v5", color.yellow)
+    f_row(tbl, 19, "גרסת קוד", "IFVG v6", color.yellow)

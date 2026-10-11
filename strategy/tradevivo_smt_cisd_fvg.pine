@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v46", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v47", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -146,8 +146,8 @@ s5On = input.bool(true, "סשן 5 · ניו יורק צהריים", inline = "s5
 s5   = input.session("1830-2300", "", inline = "s5", group = G9)
 flatEnd = input.bool(false, "סגור פוזיציה בסוף הסשן", group = G9)
 armInSess = input.bool(false, "הסטאפ (SMT) חייב להיווצר בתוך סשן פעיל", group = G9, tooltip = "דלוק: SMT שנוצר בשעה שבה המסחר כבוי לא נלקח, גם אם הכניסה הייתה מגיעה אחר כך בתוך סשן. כך סשן כבוי (למשל ניו יורק בוקר) לא \"זולג\" לסשן הבא.")
-flatOn  = input.bool(true, "סגירה אוטומטית בשעה", inline = "fl", group = G9, tooltip = "בשעה הזאת (לפי אזור הזמן למעלה) כל העסקאות הפתוחות נסגרות, פקודות ממתינות מבוטלות, ואין כניסות חדשות עד אחרי חצות. לתיקים ממומנים שדורשים להיות בלי פוזיציה עד 23:10.")
-flatH   = input.int(23, "", minval = 0, maxval = 23, inline = "fl", group = G9)
+flatOn  = input.bool(true, "סגירה אוטומטית בשעה (שעון ניו יורק)", inline = "fl", group = G9, tooltip = "השעה לפי שעון ניו יורק, כך שהסגירה תמיד לפני סגירת הבורסה (17:00 ניו יורק) — גם בשבועות שבהם ישראל וארה\"ב עוברות שעון בתאריכים שונים. 16:00 ניו יורק = 23:00 בישראל ברוב השנה. מהשעה הזאת ועד פתיחת הבורסה (18:00 ניו יורק) אין כניסות חדשות.")
+flatH   = input.int(16, "", minval = 0, maxval = 23, inline = "fl", group = G9)
 flatM   = input.int(0, ":", minval = 0, maxval = 59, inline = "fl", group = G9)
 
 showDraw = input.bool(true, "הצג SMT / CISD / FVG על הגרף", group = G10)
@@ -888,10 +888,11 @@ if closeLim and (lossHit or profHit)
         strategy.close_all(comment = lossHit ? "מגבלת הפסד יומית" : "יעד רווח יומי")
 
 // סגירה אוטומטית בשעה קבועה (לפי סוף הנר, כדי שהסגירה תתבצע לכל המאוחר בשעה שנקבעה)
-int  barEndMin = hour(time_close, tz) * 60 + minute(time_close, tz)
-bool flatNow   = flatOn and not na(time_close) and barEndMin >= flatH * 60 + flatM
+// לפי שעון ניו יורק: מהשעה שנקבעה ועד פתיחת הבורסה מחדש (18:00 ניו יורק)
+int  barEndMin = hour(time_close, "America/New_York") * 60 + minute(time_close, "America/New_York")
+bool flatNow   = flatOn and not na(time_close) and barEndMin >= flatH * 60 + flatM and barEndMin < 18 * 60
 if flatNow and strategy.position_size != 0
-    strategy.close_all(comment = "סגירה אוטומטית " + str.format("{0,number,00}:{1,number,00}", flatH, flatM))
+    strategy.close_all(comment = "סגירה אוטומטית " + str.format("{0,number,00}:{1,number,00}", flatH, flatM) + " NY")
 
 if flatEnd and sessIdx != sessIdx[1] and sessIdx[1] > 0 and strategy.position_size != 0
     strategy.close_all(comment = "סוף סשן")
@@ -1294,4 +1295,4 @@ if showTbl and barstate.islast
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 20, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 21, "גרסת קוד", "v46", color.yellow)
+    f_row(tbl, 21, "גרסת קוד", "v47", color.yellow)
