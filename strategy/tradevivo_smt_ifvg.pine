@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v1", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v2", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -64,6 +64,7 @@ fvgEdge   = input.string(EDGE_NEAR, "נקודת הלימיט באזור ה-IFVG"
 fvgMinT   = input.int(2, "גודל FVG מינ' (טיקים)", minval = 1, group = G3)
 invWait   = input.int(12, "זמן מקס' להיפוך אחרי ה-SMT (נרות SMT)", minval = 1, group = G3)
 entryWait = input.int(60, "זמן מקס' לכניסה בלימיט אחרי ההיפוך (דקות)", minval = 1, group = G3)
+mktFb     = input.bool(true, "בשוק: אם הסטופ גדול מדי — לימיט בריטסט של ה-IFVG", group = G3, tooltip = "כשנר ההיפוך נסגר רחוק מהשיא/שפל, הסטופ מכניסה בשוק יוצא גדול מהמקסימום. במקום לוותר על העסקה — שמים לימיט באזור ה-IFVG (לפי 'נקודת הלימיט') ומחכים לריטסט.")
 invKill   = input.bool(true, "ביטול הלימיט אם נר נסגר בחזרה מעבר ל-IFVG", group = G3, tooltip = "בשורט: נר בטיימפריים של ה-IFVG נסגר מעל החלק העליון של האזור — ה-IFVG נכשל והלימיט מבוטל.")
 cancelTgt = input.bool(false, "ביטול אם המחיר הגיע ליעד לפני הכניסה", group = G3)
 
@@ -863,7 +864,12 @@ if strategy.position_size == 0 and ((stStage == 2 and canTrade) or goMkt)
         stDir   := 0
     else if bad != ""
         whyNow := bad
-        if goMkt
+        if goMkt and mktFb and rTick > slMaxT
+            // כניסה בשוק עם סטופ גדול מדי → עוברים לחכות לריטסט של אזור ה-IFVG
+            stStage := 2
+            if showDraw
+                label.new(x = time, y = close, text = "סטופ בשוק גדול (" + str.tostring(rTick, "#") + " טיקים) — לימיט בריטסט", xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_down : label.style_label_up, color = color.new(color.gray, 15), textcolor = color.white, size = size.tiny)
+        else if goMkt
             f_endLabel(stDir, "בוטל: " + bad)
             nCxStop += 1
             stStage := 0
@@ -938,4 +944,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", "IFVG v1", color.yellow)
+    f_row(tbl, 19, "גרסת קוד", "IFVG v2", color.yellow)
