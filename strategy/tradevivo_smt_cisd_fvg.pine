@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v40", overlay = true,
+strategy("TradeVivo · SMT + CISD + FVG", shorttitle = "TV SMT v41", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -91,7 +91,7 @@ entryWait = input.int(60, "זמן מקס' לכניסה אחרי CISD (דקות)"
 cancelTgt = input.bool(false, "ביטול אם המחיר הגיע ליעד לפני הכניסה", group = G4)
 
 riskUsd  = input.float(300, "סיכון קבוע לעסקה ($)", minval = 1, group = G5)
-qtyRound = input.string(RND_NEAR, "עיגול מספר החוזים", options = [RND_NEAR, RND_UP, RND_DOWN], group = G5, tooltip = "מספר החוזים = סיכון $ ÷ (מרחק הסטופ × שווי נקודה). כשיוצא מספר לא שלם, כך הוא מעוגל. עיגול למעלה יכול לסכן קצת יותר מהסכום שהוגדר.")
+qtyRound = input.string(RND_UP, "עיגול מספר החוזים", options = [RND_NEAR, RND_UP, RND_DOWN], group = G5, tooltip = "מספר החוזים = סיכון $ ÷ (מרחק הסטופ × שווי נקודה). כשיוצא מספר לא שלם, כך הוא מעוגל. עיגול למעלה יכול לסכן קצת יותר מהסכום שהוגדר.")
 maxQty   = input.int(20, "מקסימום חוזים", minval = 1, group = G5)
 slBuf    = input.int(2, "מרווח סטופ מעבר לשיא/שפל (טיקים)", minval = 0, group = G5)
 slMinT   = input.int(8, "סטופ מינימלי (טיקים)", minval = 1, group = G5)
@@ -1285,4 +1285,4 @@ if showTbl and barstate.islast
     f_row(tbl, 18, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 19, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 20, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 21, "גרסת קוד", "v40", color.yellow)
+    f_row(tbl, 21, "גרסת קוד", "v41", color.yellow)
