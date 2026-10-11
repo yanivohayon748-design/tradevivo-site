@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v6", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v7", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -44,6 +44,7 @@ string G7 = "קידום סטופ לפי RR"
 string G8 = "מגבלות"
 string G9 = "סשנים"
 string G10 = "תצוגה"
+string G11 = "חיבור TradersPost"
 
 // ───────────── הגדרות ─────────────
 dirMode  = input.string(DIR_BOTH, "כיוון מסחר", options = [DIR_BOTH, DIR_LONG, DIR_SHORT], group = G1)
@@ -129,6 +130,10 @@ showDraw = input.bool(true, "הצג SMT / FVG / IFVG על הגרף", group = G10
 showPos  = input.bool(true, "הצג כלי פוזיציה על כל עסקה", group = G10)
 showFail = input.bool(false, "הצג גם סטאפים שלא הגיעו להיפוך", group = G10)
 showTbl  = input.bool(true, "הצג טבלת סטטוס", group = G10)
+
+tpOn     = input.bool(false, "שלח פקודות ל-TradersPost (JSON)", group = G11, tooltip = "כשמסומן: כל התראה של האסטרטגיה היא פקודת JSON ל-TradersPost — כניסה עם סטופ ויעד, הזזת סטופ, סגירה חלקית, סגירה וביטול.\nבחלון ההתראה: Condition = האסטרטגיה, 'alert() function calls only', ו-Webhook URL של TradersPost.")
+tpTicker = input.string("", "סימול אצל הברוקר (ריק = הסימול של הגרף)", group = G11, tooltip = "למשל MNQZ2026 (חוזה דצמבר 2026). ריק = נשלח הסימול של הגרף (MNQ1!) ו-TradersPost בוחר את החוזה הקדמי.")
+tpDelay  = input.int(2, "השהיה בין ביטול לפקודה חדשה (שניות)", minval = 1, maxval = 30, group = G11)
 
 // רשומת שיא/שפל עבור זיהוי SMT חי
 type Piv
@@ -450,6 +455,27 @@ f_cancelSide(int dir) =>
     strategy.cancel(p + "-TP3")
     0
 
+// ───────────── TradersPost (וובהוק JSON) ─────────────
+// כל הודעה נשלחת ב-alert() — בזמן אמת בלבד, בסגירת נר הגרף
+string tpSym = tpTicker == "" ? syminfo.ticker : tpTicker
+
+f_px(float p) =>
+    str.tostring(p, format.mintick)
+
+f_tpSend(string body) =>
+    if tpOn
+        alert("{\"ticker\":\"" + tpSym + "\"," + body + "}", alert.freq_all)
+    0
+
+var bool  tpLive     = false  // נשלחה פקודה שעוד פתוחה אצל הברוקר (לימיט ממתין או פוזיציה)
+var float tpLvl      = na     // מחיר הכניסה האחרון שנשלח
+var int   tpDirSent  = 0
+var bool  tpSplit    = false  // הסטופ והיעדים אצל הברוקר כבר פוצלו לפקודות נפרדות
+var float tpStopSent = na
+var bool  tpD1Sent   = false
+var bool  tpD2Sent   = false
+bool      tpFlatBar  = false  // נשלחה בנר הזה פקודת סגירה
+
 // ───────────── מצב עסקה ─────────────
 var int   pDir   = 0
 var float pEntry = na
@@ -528,7 +554,12 @@ if newEntry
     done2  := false
     stStage := 0
     stDir   := 0
-    alert(str.format("{0} FILLED @ {1} | SL {2} | Qty {3}", tDir == 1 ? "LONG" : "SHORT", str.tostring(tEntry, format.mintick), str.tostring(tStop, format.mintick), tQty), alert.freq_once_per_bar_close)
+    tpSplit    := false
+    tpStopSent := pStop
+    tpD1Sent   := false
+    tpD2Sent   := false
+    if not tpOn
+        alert(str.format("{0} FILLED @ {1} | SL {2} | Qty {3}", tDir == 1 ? "LONG" : "SHORT", str.tostring(tEntry, format.mintick), str.tostring(tStop, format.mintick), tQty), alert.freq_once_per_bar_close)
 
 // כלי פוזיציה על כל עסקה
 var box pbRed = na
@@ -581,18 +612,50 @@ bool  lossHit = maxLoss > 0 and dayTot <= -maxLoss
 bool  profHit = maxProf > 0 and dayTot >= maxProf
 if (maxLoss > 0 and dayReal <= -maxLoss) or (maxProf > 0 and dayReal >= maxProf)
     dayLock := true
+bool tpFlatCall = false
 if closeLim and (lossHit or profHit)
     dayLock := true
     if strategy.position_size != 0
+        tpFlatCall := true
         strategy.close_all(comment = lossHit ? "מגבלת הפסד יומית" : "יעד רווח יומי")
 
 // לפי שעון ניו יורק: מהשעה שנקבעה ועד פתיחת הבורסה מחדש (18:00 ניו יורק)
 int  barEndMin = hour(time_close, "America/New_York") * 60 + minute(time_close, "America/New_York")
 bool flatNow   = flatOn and not na(time_close) and barEndMin >= flatH * 60 + flatM and barEndMin < 18 * 60
 if flatNow and strategy.position_size != 0
+    tpFlatCall := true
     strategy.close_all(comment = "סגירה אוטומטית " + str.format("{0,number,00}:{1,number,00}", flatH, flatM) + " NY")
 if flatEnd and sessIdx != sessIdx[1] and sessIdx[1] > 0 and strategy.position_size != 0
+    tpFlatCall := true
     strategy.close_all(comment = "סוף סשן")
+
+// ───────────── TradersPost: סגירה וסנכרון הסטופ/היעדים אצל הברוקר ─────────────
+// הפוזיציה נסגרה באסטרטגיה (יעד / סטופ / סגירה אוטומטית / מגבלה יומית) → סוגרים יתרה ומבטלים כל פקודה פתוחה
+bool tvClosed = strategy.position_size == 0 and (strategy.position_size[1] != 0 or newEntry)
+if tpLive and (tvClosed or tpFlatCall)
+    f_tpSend("\"action\":\"exit\",\"cancel\":true,\"ignoreTradingWindows\":true")
+    f_tpSend("\"action\":\"cancel\",\"delay\":" + str.tostring(tpDelay + 1))
+    tpLive    := false
+    tpFlatBar := true
+
+// הסטופ זז / יעד חלקי מומש / יש יעדים חלקיים → מבטלים הכול ושולחים מחדש: סטופ על כל היתרה + לימיט לכל יעד שנשאר
+if tpLive and strategy.position_size != 0 and tDir != 0
+    bool part = tQ1 > 0 or tQ2 > 0
+    if (part and not tpSplit) or tStop != tpStopSent or done1 != tpD1Sent or done2 != tpD2Sent
+        int    rem = int(math.abs(strategy.position_size))
+        string dl  = ",\"cancel\":false,\"delay\":" + str.tostring(tpDelay)
+        f_tpSend("\"action\":\"cancel\"")
+        f_tpSend("\"action\":\"exit\",\"orderType\":\"stop\",\"stopPrice\":" + f_px(tStop) + ",\"quantity\":" + str.tostring(rem) + dl)
+        if tQ1 > 0 and not done1
+            f_tpSend("\"action\":\"exit\",\"orderType\":\"limit\",\"limitPrice\":" + f_px(tT1) + ",\"quantity\":" + str.tostring(tQ1) + dl)
+        if tQ2 > 0 and not done2
+            f_tpSend("\"action\":\"exit\",\"orderType\":\"limit\",\"limitPrice\":" + f_px(tT2) + ",\"quantity\":" + str.tostring(tQ2) + dl)
+        if tQ3 > 0
+            f_tpSend("\"action\":\"exit\",\"orderType\":\"limit\",\"limitPrice\":" + f_px(tT3) + ",\"quantity\":" + str.tostring(tQ3) + dl)
+        tpSplit    := true
+        tpStopSent := tStop
+        tpD1Sent   := done1
+        tpD2Sent   := done2
 
 // ───────────── עזרים ─────────────
 // נר הגרף שעשה את השיא/שפל של ה-SMT (בתוך נר ה-SMT שמתחיל ב-t0)
@@ -918,7 +981,17 @@ if strategy.position_size == 0 and ((stStage == 2 and canTrade) or goMkt)
         pT3    := t3
         if showDraw and goMkt
             label.new(x = time, y = close, text = "כניסה בשוק · " + str.tostring(qty) + " חוזים", xloc = xloc.bar_time, style = stDir == -1 ? label.style_label_down : label.style_label_up, color = color.new(color.orange, 20), textcolor = color.black, size = size.tiny)
-        if na(alertedLvl) or lvl != alertedLvl
+        if tpOn and (not tpLive or lvl != tpLvl or stDir != tpDirSent)
+            // כניסה עם סטופ ויעד אחרון (OCO אצל הברוקר); cancel=true מבטל לימיט קודם שעוד לא התמלא
+            string side = stDir == 1 ? "buy" : "sell"
+            string snt  = stDir == 1 ? "bullish" : "bearish"
+            string lp   = goMkt ? "" : ",\"limitPrice\":" + f_px(lvl)
+            string dly  = tpFlatBar ? ",\"delay\":" + str.tostring(tpDelay + 2) : ""
+            f_tpSend("\"action\":\"" + side + "\",\"sentiment\":\"" + snt + "\",\"orderType\":\"" + (goMkt ? "market" : "limit") + "\"" + lp + ",\"quantity\":" + str.tostring(qty) + ",\"stopLoss\":{\"type\":\"stop\",\"stopPrice\":" + f_px(sl) + "},\"takeProfit\":{\"limitPrice\":" + f_px(lastT) + "},\"cancel\":true,\"signalPrice\":" + f_px(close) + dly)
+            tpLive    := true
+            tpLvl     := lvl
+            tpDirSent := stDir
+        if not tpOn and (na(alertedLvl) or lvl != alertedLvl)
             alert(str.format("{0} {1} @ {2} | SL {3} | TP {4} | Qty {5}", stDir == 1 ? "LONG" : "SHORT", goMkt ? "MARKET" : "LIMIT", str.tostring(lvl, format.mintick), str.tostring(sl, format.mintick), str.tostring(lastT, format.mintick), qty), alert.freq_once_per_bar_close)
             alertedLvl := lvl
 
@@ -931,6 +1004,11 @@ if stStage == 0
 if not placed and strategy.position_size == 0 and not goMkt[1]
     f_cancelSide(1)
     f_cancelSide(-1)
+    alertedLvl := na
+    // הלימיט בוטל באסטרטגיה בלי שהתמלא → מבטלים אותו גם אצל הברוקר
+    if tpLive
+        f_tpSend("\"action\":\"cancel\"")
+        tpLive := false
 
 // ───────────── תצוגה ─────────────
 bool inTrade = strategy.position_size != 0 and tDir != 0
@@ -968,4 +1046,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", "IFVG v6", color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v7 · TradersPost" : "IFVG v7", tpOn ? color.lime : color.yellow)
