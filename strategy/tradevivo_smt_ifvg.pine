@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v12", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v13", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -154,7 +154,8 @@ type Piv
     int   fires   = 0
 
 // ───────────── נתוני ה-SMT וה-IFVG — ללא ריפיינט ─────────────
-// הנר של הטיימפריים הגבוה מעובד בדיוק בנר הגרף שבו הוא נסגר (ערכי הנר הסגור, lookahead_off),
+// הנר של הטיימפריים הגבוה מעובד בדיוק בנר הגרף שבו הוא נסגר: ערכי הנר הנוכחי (lookahead_on, בלי היסט)
+// נקראים רק בנר הגרף האחרון שלו — אז הוא כבר סגור, כך שאין הצצה לעתיד,
 // כך שגרף דקה וגרף 3 דקות מגיבים באותו רגע ובאותו מחיר. אם לנר הסוגר אין נר בגרף (דקה בלי מסחר) —
 // הנר מעובד בנר הגרף הבא מתוך הנר הסגור האחרון ([1] + lookahead_on).
 f_model(int L, int R, int o) =>
@@ -172,13 +173,13 @@ f_cmp(int L, int R, int o) =>
 f_ib(int o) =>
     [high[o], low[o], close[o], time[o], high[o + 2], low[o + 2], time[o + 1]]
 
-[aPH, aPL, aPT, aH, aL, aT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, 0), lookahead = barmerge.lookahead_off)
+[aPH, aPL, aPT, aH, aL, aT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, 0), lookahead = barmerge.lookahead_on)
 [bPH, bPL, bPT, bH, bL, bT0] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
-[a1Hw, a1Lw, a1T, a1H, a1L] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, 0), lookahead = barmerge.lookahead_off)
+[a1Hw, a1Lw, a1T, a1H, a1L] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, 0), lookahead = barmerge.lookahead_on)
 [b1Hw, b1Lw, b1T, b1H, b1L] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
-[a2Hw, a2Lw, a2T, a2H, a2L] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, 0), lookahead = barmerge.lookahead_off)
+[a2Hw, a2Lw, a2T, a2H, a2L] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, 0), lookahead = barmerge.lookahead_on)
 [b2Hw, b2Lw, b2T, b2H, b2L] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
-[aiH, aiL, aiC, aiT, aiH3, aiL3, aiT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(0), lookahead = barmerge.lookahead_off)
+[aiH, aiL, aiC, aiT, aiH3, aiL3, aiT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(0), lookahead = barmerge.lookahead_on)
 [biH, biL, biC, biT, biH3, biL3, biT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(1), lookahead = barmerge.lookahead_on)
 
 // נסגר עכשיו נר של הטיימפריים הגבוה? (בדיוק בנר הזה / באיחור — כשלנר הסוגר לא היה נר בגרף)
@@ -1137,4 +1138,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v12 · TradersPost" : "IFVG v12", tpOn ? color.lime : color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v13 · TradersPost" : "IFVG v13", tpOn ? color.lime : color.yellow)
