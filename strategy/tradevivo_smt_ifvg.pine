@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v13", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v14", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -182,44 +182,48 @@ f_ib(int o) =>
 [aiH, aiL, aiC, aiT, aiH3, aiL3, aiT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(0), lookahead = barmerge.lookahead_on)
 [biH, biL, biC, biT, biH3, biL3, biT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(1), lookahead = barmerge.lookahead_on)
 
-// נסגר עכשיו נר של הטיימפריים הגבוה? (בדיוק בנר הזה / באיחור — כשלנר הסוגר לא היה נר בגרף)
-int  mBarT   = time(modelTf)
-int  mBarC   = time_close(modelTf)
-int  iBarT   = time(ifvgTf)
-int  iBarC   = time_close(ifvgTf)
+// כבוי: כמו עד גרסה 11 — הנר הסגור האחרון ([1]) מעובד בנר הגרף שאחרי הסגירה (בגרף באותו טיימפריים — הנר הנוכחי).
+// מסומן: הנר מעובד בנר הגרף שבו הוא נסגר; אם לנר הסוגר אין נר בגרף — בנר הגרף הבא.
 bool mSame   = timeframe.in_seconds() == timeframe.in_seconds(modelTf)
 bool iSame   = timeframe.in_seconds() == timeframe.in_seconds(ifvgTf)
-bool mExact  = exactOn ? not na(time_close) and time_close == mBarC : mSame
-bool iExact  = exactOn ? not na(time_close) and time_close == iBarC : iSame
-bool mLate   = not mExact and not mExact[1] and not na(mBarT[1]) and mBarT != mBarT[1]
-bool iLate   = not iExact and not iExact[1] and not na(iBarT[1]) and iBarT != iBarT[1]
+int  mBarC   = time_close(modelTf)
+int  iBarC   = time_close(ifvgTf)
+bool mUseA   = exactOn ? not na(time_close) and time_close == mBarC : mSame
+bool iUseA   = exactOn ? not na(time_close) and time_close == iBarC : iSame
 
-float mPH   = mExact ? aPH : bPH
-float mPL   = mExact ? aPL : bPL
-int   mPT   = mExact ? aPT : bPT
-float mH    = mExact ? aH : bH
-float mL    = mExact ? aL : bL
-int   mT    = mExact ? aT : bT0
-float c1HiW = mExact ? a1Hw : b1Hw
-float c1LoW = mExact ? a1Lw : b1Lw
-int   c1T   = mExact ? a1T : b1T
-float c1H5  = mExact ? a1H : b1H
-float c1L5  = mExact ? a1L : b1L
-float c2HiW = mExact ? a2Hw : b2Hw
-float c2LoW = mExact ? a2Lw : b2Lw
-int   c2T   = mExact ? a2T : b2T
-float c2H5  = mExact ? a2H : b2H
-float c2L5  = mExact ? a2L : b2L
-float iH    = iExact ? aiH : biH
-float iL    = iExact ? aiL : biL
-float iC    = iExact ? aiC : biC
-int   iT    = iExact ? aiT : biT
-float iH3   = iExact ? aiH3 : biH3
-float iL3   = iExact ? aiL3 : biL3
-int   iT2   = iExact ? aiT2 : biT2
+float mPH   = mUseA ? aPH : bPH
+float mPL   = mUseA ? aPL : bPL
+int   mPT   = mUseA ? aPT : bPT
+float mH    = mUseA ? aH : bH
+float mL    = mUseA ? aL : bL
+int   mT    = mUseA ? aT : bT0
+float c1HiW = mUseA ? a1Hw : b1Hw
+float c1LoW = mUseA ? a1Lw : b1Lw
+int   c1T   = mUseA ? a1T : b1T
+float c1H5  = mUseA ? a1H : b1H
+float c1L5  = mUseA ? a1L : b1L
+float c2HiW = mUseA ? a2Hw : b2Hw
+float c2LoW = mUseA ? a2Lw : b2Lw
+int   c2T   = mUseA ? a2T : b2T
+float c2H5  = mUseA ? a2H : b2H
+float c2L5  = mUseA ? a2L : b2L
+float iH    = iUseA ? aiH : biH
+float iL    = iUseA ? aiL : biL
+float iC    = iUseA ? aiC : biC
+int   iT    = iUseA ? aiT : biT
+float iH3   = iUseA ? aiH3 : biH3
+float iL3   = iUseA ? aiL3 : biL3
+int   iT2   = iUseA ? aiT2 : biT2
 
-bool newHtf = (mExact or mLate) and not na(mT)
-bool newIb  = (iExact or iLate) and not na(iT)
+// נר חדש = זמן הנר שהתקבל שונה מהנר האחרון שעובד (כך אף נר לא מעובד פעמיים)
+var int lastMT = na
+var int lastIT = na
+bool newHtf = not na(mT) and mT != nz(lastMT)
+bool newIb  = not na(iT) and iT != nz(lastIT)
+if newHtf
+    lastMT := mT
+if newIb
+    lastIT := iT
 bool tfOk   = timeframe.in_seconds() <= math.min(timeframe.in_seconds(modelTf), timeframe.in_seconds(ifvgTf))
 int  tfMs   = timeframe.in_seconds(modelTf) * 1000
 
@@ -1138,4 +1142,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v13 · TradersPost" : "IFVG v13", tpOn ? color.lime : color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v14 · TradersPost" : "IFVG v14", tpOn ? color.lime : color.yellow)
