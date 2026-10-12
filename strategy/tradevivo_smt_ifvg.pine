@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v11", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v12", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -152,8 +152,10 @@ type Piv
     bool  again   = false
     int   fires   = 0
 
-// ───────────── נתוני ה-SMT — ללא ריפיינט ─────────────
-// הערכים מגיעים מהנר הסגור האחרון של הטיימפריים ([1] + lookahead_on); כשהגרף באותו טיימפריים — מהנר הנוכחי.
+// ───────────── נתוני ה-SMT וה-IFVG — ללא ריפיינט ─────────────
+// הנר של הטיימפריים הגבוה מעובד בדיוק בנר הגרף שבו הוא נסגר (ערכי הנר הסגור, lookahead_off),
+// כך שגרף דקה וגרף 3 דקות מגיבים באותו רגע ובאותו מחיר. אם לנר הסוגר אין נר בגרף (דקה בלי מסחר) —
+// הנר מעובד בנר הגרף הבא מתוך הנר הסגור האחרון ([1] + lookahead_on).
 f_model(int L, int R, int o) =>
     float ph = ta.pivothigh(high, L, R)
     float pl = ta.pivotlow(low, L, R)
@@ -165,19 +167,55 @@ f_cmp(int L, int R, int o) =>
     float lw = ta.lowest(low, L + R + 1)
     [hw[o], lw[o], time[o], high[o], low[o]]
 
-// נרות טיימפריים ה-IFVG: הנר הסגור האחרון + שני הנרות שלפניו (לזיהוי FVG)
+// נרות טיימפריים ה-IFVG: הנר הסגור + שני הנרות שלפניו (לזיהוי FVG)
 f_ib(int o) =>
     [high[o], low[o], close[o], time[o], high[o + 2], low[o + 2], time[o + 1]]
 
-int mOff = timeframe.in_seconds() == timeframe.in_seconds(modelTf) ? 0 : 1
-int iOff = timeframe.in_seconds() == timeframe.in_seconds(ifvgTf) ? 0 : 1
-[mPH, mPL, mPT, mH, mL, mT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
-[c1HiW, c1LoW, c1T, c1H5, c1L5] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
-[c2HiW, c2LoW, c2T, c2H5, c2L5] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
-[iH, iL, iC, iT, iH3, iL3, iT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(iOff), lookahead = barmerge.lookahead_on)
+[aPH, aPL, aPT, aH, aL, aT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, 0), lookahead = barmerge.lookahead_off)
+[bPH, bPL, bPT, bH, bL, bT0] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
+[a1Hw, a1Lw, a1T, a1H, a1L] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, 0), lookahead = barmerge.lookahead_off)
+[b1Hw, b1Lw, b1T, b1H, b1L] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
+[a2Hw, a2Lw, a2T, a2H, a2L] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, 0), lookahead = barmerge.lookahead_off)
+[b2Hw, b2Lw, b2T, b2H, b2L] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
+[aiH, aiL, aiC, aiT, aiH3, aiL3, aiT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(0), lookahead = barmerge.lookahead_off)
+[biH, biL, biC, biT, biH3, biL3, biT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(1), lookahead = barmerge.lookahead_on)
 
-bool newHtf = not na(mT) and mT != nz(mT[1])
-bool newIb  = not na(iT) and iT != nz(iT[1])
+// נסגר עכשיו נר של הטיימפריים הגבוה? (בדיוק בנר הזה / באיחור — כשלנר הסוגר לא היה נר בגרף)
+int  mBarT   = time(modelTf)
+int  mBarC   = time_close(modelTf)
+int  iBarT   = time(ifvgTf)
+int  iBarC   = time_close(ifvgTf)
+bool mExact  = not na(time_close) and time_close == mBarC
+bool iExact  = not na(time_close) and time_close == iBarC
+bool mLate   = not mExact and not nz(mExact[1]) and not na(mBarT[1]) and mBarT != mBarT[1]
+bool iLate   = not iExact and not nz(iExact[1]) and not na(iBarT[1]) and iBarT != iBarT[1]
+
+float mPH   = mExact ? aPH : bPH
+float mPL   = mExact ? aPL : bPL
+int   mPT   = mExact ? aPT : bPT
+float mH    = mExact ? aH : bH
+float mL    = mExact ? aL : bL
+int   mT    = mExact ? aT : bT0
+float c1HiW = mExact ? a1Hw : b1Hw
+float c1LoW = mExact ? a1Lw : b1Lw
+int   c1T   = mExact ? a1T : b1T
+float c1H5  = mExact ? a1H : b1H
+float c1L5  = mExact ? a1L : b1L
+float c2HiW = mExact ? a2Hw : b2Hw
+float c2LoW = mExact ? a2Lw : b2Lw
+int   c2T   = mExact ? a2T : b2T
+float c2H5  = mExact ? a2H : b2H
+float c2L5  = mExact ? a2L : b2L
+float iH    = iExact ? aiH : biH
+float iL    = iExact ? aiL : biL
+float iC    = iExact ? aiC : biC
+int   iT    = iExact ? aiT : biT
+float iH3   = iExact ? aiH3 : biH3
+float iL3   = iExact ? aiL3 : biL3
+int   iT2   = iExact ? aiT2 : biT2
+
+bool newHtf = (mExact or mLate) and not na(mT)
+bool newIb  = (iExact or iLate) and not na(iT)
 bool tfOk   = timeframe.in_seconds() <= math.min(timeframe.in_seconds(modelTf), timeframe.in_seconds(ifvgTf))
 int  tfMs   = timeframe.in_seconds(modelTf) * 1000
 
@@ -1096,4 +1134,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v11 · TradersPost" : "IFVG v11", tpOn ? color.lime : color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v12 · TradersPost" : "IFVG v12", tpOn ? color.lime : color.yellow)
