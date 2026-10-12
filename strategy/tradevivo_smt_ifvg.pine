@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v14", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v15", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -226,6 +226,7 @@ if newIb
     lastIT := iT
 bool tfOk   = timeframe.in_seconds() <= math.min(timeframe.in_seconds(modelTf), timeframe.in_seconds(ifvgTf))
 int  tfMs   = timeframe.in_seconds(modelTf) * 1000
+int  ibMs   = timeframe.in_seconds(ifvgTf) * 1000
 
 // היסטוריית נרות ה-SMT — לסטופ מבנה
 var array<int>   hT  = array.new<int>()
@@ -306,6 +307,7 @@ var int   stSwingT = na
 var float stPrev   = na
 var int   stPrevT  = na
 var int   stArmT   = na
+var int   stSmtC   = na         // זמן הסגירה של נר ה-SMT שהפעיל את הסטאפ
 var int   stLType  = 0
 var float stStopRef = na
 var float stExt    = na
@@ -800,7 +802,8 @@ f_mkCand() =>
 
 // ה-FVG הראשון שהתהפך מבין ה-FVG-ים של התנועה אל השיא/שפל (מהשיא/שפל הקודם ועד נר השיא/שפל).
 // nowOnly = רק FVG שהתהפך בנר שנסגר עכשיו. כשכמה מתהפכים יחד — הקרוב לשיא/שפל.
-f_firstInv(bool nowOnly) =>
+// atArm = בנר שבו ה-SMT זוהה: גם היפוך בנר ה-IFVG שנסגר יחד עם נר ה-SMT (כך זה זהה בגרף דקה ובגרף 3 דקות).
+f_firstInv(bool nowOnly, bool atArm) =>
     int   r    = na
     int   bx   = na
     float bk   = na
@@ -814,7 +817,7 @@ f_firstInv(bool nowOnly) =>
             if ft <= nz(stPrevT)
                 break
             int fx = array.get(xs, i)
-            if ft <= stSbT and not na(fx) and fx > stSbT and (not nowOnly or (newIb and fx == iT))
+            if ft <= stSbT and not na(fx) and fx > stSbT and (not nowOnly or (atArm ? fx + ibMs >= stSmtC : (newIb and fx == iT)))
                 float k = stDir == -1 ? array.get(ks, i) : -array.get(ks, i)
                 if na(r) or fx < bx or (fx == bx and k > bk)
                     r  := i
@@ -845,6 +848,7 @@ if lvBear and allowShort and isFlat and (stStage == 0 or okReplS)
     stPrev   := lvBPrev
     stPrevT  := lvBPrevT
     stArmT   := time
+    stSmtC   := mT + tfMs
     stLType  := lvBType
     stExt    := low
     stStopRef := f_stopRef(stSwing, stSwingT, stLType, true)
@@ -876,6 +880,7 @@ if lvBull and allowLong and isFlat and (stStage == 0 or okReplL)
     stPrev   := lvUPrev
     stPrevT  := lvUPrevT
     stArmT   := time
+    stSmtC   := mT + tfMs
     stLType  := lvUType
     stExt    := high
     stStopRef := f_stopRef(stSwing, stSwingT, stLType, false)
@@ -942,7 +947,7 @@ if stStage > 0 and isFlat
             box.set_right(bxF, time)
         // היפוך עכשיו של אחד מה-FVG-ים של התנועה; בנר שבו ה-SMT זוהה — גם היפוך שכבר קרה אחרי השיא/שפל
         // (בלימיט — מותר; בשוק — רק אם ההיפוך בנר שנסגר עכשיו)
-        int ixI = time != stArmT ? f_firstInv(true) : f_firstInv(entryMode == ENT_MKT)
+        int ixI = time != stArmT ? f_firstInv(true, false) : f_firstInv(entryMode == ENT_MKT, true)
         if not na(ixI)
             cTop := stDir == -1 ? array.get(uTop, ixI) : array.get(bTop, ixI)
             cBot := stDir == -1 ? array.get(uBot, ixI) : array.get(bBot, ixI)
@@ -1142,4 +1147,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v14 · TradersPost" : "IFVG v14", tpOn ? color.lime : color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v15 · TradersPost" : "IFVG v15", tpOn ? color.lime : color.yellow)
