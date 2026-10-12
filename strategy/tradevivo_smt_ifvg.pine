@@ -1,5 +1,5 @@
 //@version=6
-strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v15", overlay = true,
+strategy("TradeVivo · SMT + IFVG", shorttitle = "TV IFVG v16", overlay = true,
      pyramiding = 0, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 1,
      margin_long = 0, margin_short = 0,
@@ -49,7 +49,6 @@ string G11 = "התראות וחיבור TradersPost"
 // ───────────── הגדרות ─────────────
 dirMode  = input.string(DIR_BOTH, "כיוון מסחר", options = [DIR_BOTH, DIR_LONG, DIR_SHORT], group = G1)
 modelTf  = input.timeframe("15", "טיימפריים של ה-SMT", options = ["5", "15"], group = G1)
-exactOn  = input.bool(false, "עיבוד נר ה-IFVG/SMT ברגע הסגירה (גרף דקה = גרף 3 דקות)", group = G1, tooltip = "כבוי (כמו עד גרסה 11): בגרף דקה הנר של 3/15 הדקות מעובד בדקה שאחרי הסגירה — הכניסה מאוחרת בדקה.\nמסומן: הנר מעובד בדיוק בסגירה, כך שגרף דקה וגרף 3 דקות נותנים אותן כניסות.")
 ifvgTf   = input.timeframe("3", "טיימפריים של ה-IFVG", options = ["1", "2", "3", "5"], group = G1, tooltip = "על אילו נרות מחפשים את ה-FVG ואת ההיפוך שלו. הגרף עצמו צריך להיות בטיימפריים הזה או קטן ממנו (מומלץ גרף דקה).")
 
 cmp1On   = input.bool(true, "", inline = "c1", group = G2)
@@ -153,11 +152,8 @@ type Piv
     bool  again   = false
     int   fires   = 0
 
-// ───────────── נתוני ה-SMT וה-IFVG — ללא ריפיינט ─────────────
-// הנר של הטיימפריים הגבוה מעובד בדיוק בנר הגרף שבו הוא נסגר: ערכי הנר הנוכחי (lookahead_on, בלי היסט)
-// נקראים רק בנר הגרף האחרון שלו — אז הוא כבר סגור, כך שאין הצצה לעתיד,
-// כך שגרף דקה וגרף 3 דקות מגיבים באותו רגע ובאותו מחיר. אם לנר הסוגר אין נר בגרף (דקה בלי מסחר) —
-// הנר מעובד בנר הגרף הבא מתוך הנר הסגור האחרון ([1] + lookahead_on).
+// ───────────── נתוני ה-SMT — ללא ריפיינט ─────────────
+// הערכים מגיעים מהנר הסגור האחרון של הטיימפריים ([1] + lookahead_on); כשהגרף באותו טיימפריים — מהנר הנוכחי.
 f_model(int L, int R, int o) =>
     float ph = ta.pivothigh(high, L, R)
     float pl = ta.pivotlow(low, L, R)
@@ -169,64 +165,21 @@ f_cmp(int L, int R, int o) =>
     float lw = ta.lowest(low, L + R + 1)
     [hw[o], lw[o], time[o], high[o], low[o]]
 
-// נרות טיימפריים ה-IFVG: הנר הסגור + שני הנרות שלפניו (לזיהוי FVG)
+// נרות טיימפריים ה-IFVG: הנר הסגור האחרון + שני הנרות שלפניו (לזיהוי FVG)
 f_ib(int o) =>
     [high[o], low[o], close[o], time[o], high[o + 2], low[o + 2], time[o + 1]]
 
-[aPH, aPL, aPT, aH, aL, aT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, 0), lookahead = barmerge.lookahead_on)
-[bPH, bPL, bPT, bH, bL, bT0] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
-[a1Hw, a1Lw, a1T, a1H, a1L] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, 0), lookahead = barmerge.lookahead_on)
-[b1Hw, b1Lw, b1T, b1H, b1L] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
-[a2Hw, a2Lw, a2T, a2H, a2L] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, 0), lookahead = barmerge.lookahead_on)
-[b2Hw, b2Lw, b2T, b2H, b2L] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, 1), lookahead = barmerge.lookahead_on)
-[aiH, aiL, aiC, aiT, aiH3, aiL3, aiT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(0), lookahead = barmerge.lookahead_on)
-[biH, biL, biC, biT, biH3, biL3, biT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(1), lookahead = barmerge.lookahead_on)
+int mOff = timeframe.in_seconds() == timeframe.in_seconds(modelTf) ? 0 : 1
+int iOff = timeframe.in_seconds() == timeframe.in_seconds(ifvgTf) ? 0 : 1
+[mPH, mPL, mPT, mH, mL, mT] = request.security(syminfo.tickerid, modelTf, f_model(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
+[c1HiW, c1LoW, c1T, c1H5, c1L5] = request.security(cmp1, modelTf, f_cmp(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
+[c2HiW, c2LoW, c2T, c2H5, c2L5] = request.security(cmp2, modelTf, f_cmp(pivL, pivR, mOff), lookahead = barmerge.lookahead_on)
+[iH, iL, iC, iT, iH3, iL3, iT2] = request.security(syminfo.tickerid, ifvgTf, f_ib(iOff), lookahead = barmerge.lookahead_on)
 
-// כבוי: כמו עד גרסה 11 — הנר הסגור האחרון ([1]) מעובד בנר הגרף שאחרי הסגירה (בגרף באותו טיימפריים — הנר הנוכחי).
-// מסומן: הנר מעובד בנר הגרף שבו הוא נסגר; אם לנר הסוגר אין נר בגרף — בנר הגרף הבא.
-bool mSame   = timeframe.in_seconds() == timeframe.in_seconds(modelTf)
-bool iSame   = timeframe.in_seconds() == timeframe.in_seconds(ifvgTf)
-int  mBarC   = time_close(modelTf)
-int  iBarC   = time_close(ifvgTf)
-bool mUseA   = exactOn ? not na(time_close) and time_close == mBarC : mSame
-bool iUseA   = exactOn ? not na(time_close) and time_close == iBarC : iSame
-
-float mPH   = mUseA ? aPH : bPH
-float mPL   = mUseA ? aPL : bPL
-int   mPT   = mUseA ? aPT : bPT
-float mH    = mUseA ? aH : bH
-float mL    = mUseA ? aL : bL
-int   mT    = mUseA ? aT : bT0
-float c1HiW = mUseA ? a1Hw : b1Hw
-float c1LoW = mUseA ? a1Lw : b1Lw
-int   c1T   = mUseA ? a1T : b1T
-float c1H5  = mUseA ? a1H : b1H
-float c1L5  = mUseA ? a1L : b1L
-float c2HiW = mUseA ? a2Hw : b2Hw
-float c2LoW = mUseA ? a2Lw : b2Lw
-int   c2T   = mUseA ? a2T : b2T
-float c2H5  = mUseA ? a2H : b2H
-float c2L5  = mUseA ? a2L : b2L
-float iH    = iUseA ? aiH : biH
-float iL    = iUseA ? aiL : biL
-float iC    = iUseA ? aiC : biC
-int   iT    = iUseA ? aiT : biT
-float iH3   = iUseA ? aiH3 : biH3
-float iL3   = iUseA ? aiL3 : biL3
-int   iT2   = iUseA ? aiT2 : biT2
-
-// נר חדש = זמן הנר שהתקבל שונה מהנר האחרון שעובד (כך אף נר לא מעובד פעמיים)
-var int lastMT = na
-var int lastIT = na
-bool newHtf = not na(mT) and mT != nz(lastMT)
-bool newIb  = not na(iT) and iT != nz(lastIT)
-if newHtf
-    lastMT := mT
-if newIb
-    lastIT := iT
+bool newHtf = not na(mT) and mT != nz(mT[1])
+bool newIb  = not na(iT) and iT != nz(iT[1])
 bool tfOk   = timeframe.in_seconds() <= math.min(timeframe.in_seconds(modelTf), timeframe.in_seconds(ifvgTf))
 int  tfMs   = timeframe.in_seconds(modelTf) * 1000
-int  ibMs   = timeframe.in_seconds(ifvgTf) * 1000
 
 // היסטוריית נרות ה-SMT — לסטופ מבנה
 var array<int>   hT  = array.new<int>()
@@ -307,7 +260,6 @@ var int   stSwingT = na
 var float stPrev   = na
 var int   stPrevT  = na
 var int   stArmT   = na
-var int   stSmtC   = na         // זמן הסגירה של נר ה-SMT שהפעיל את הסטאפ
 var int   stLType  = 0
 var float stStopRef = na
 var float stExt    = na
@@ -802,8 +754,7 @@ f_mkCand() =>
 
 // ה-FVG הראשון שהתהפך מבין ה-FVG-ים של התנועה אל השיא/שפל (מהשיא/שפל הקודם ועד נר השיא/שפל).
 // nowOnly = רק FVG שהתהפך בנר שנסגר עכשיו. כשכמה מתהפכים יחד — הקרוב לשיא/שפל.
-// atArm = בנר שבו ה-SMT זוהה: גם היפוך בנר ה-IFVG שנסגר יחד עם נר ה-SMT (כך זה זהה בגרף דקה ובגרף 3 דקות).
-f_firstInv(bool nowOnly, bool atArm) =>
+f_firstInv(bool nowOnly) =>
     int   r    = na
     int   bx   = na
     float bk   = na
@@ -817,7 +768,7 @@ f_firstInv(bool nowOnly, bool atArm) =>
             if ft <= nz(stPrevT)
                 break
             int fx = array.get(xs, i)
-            if ft <= stSbT and not na(fx) and fx > stSbT and (not nowOnly or (atArm ? fx + ibMs >= stSmtC : (newIb and fx == iT)))
+            if ft <= stSbT and not na(fx) and fx > stSbT and (not nowOnly or (newIb and fx == iT))
                 float k = stDir == -1 ? array.get(ks, i) : -array.get(ks, i)
                 if na(r) or fx < bx or (fx == bx and k > bk)
                     r  := i
@@ -848,7 +799,6 @@ if lvBear and allowShort and isFlat and (stStage == 0 or okReplS)
     stPrev   := lvBPrev
     stPrevT  := lvBPrevT
     stArmT   := time
-    stSmtC   := mT + tfMs
     stLType  := lvBType
     stExt    := low
     stStopRef := f_stopRef(stSwing, stSwingT, stLType, true)
@@ -880,7 +830,6 @@ if lvBull and allowLong and isFlat and (stStage == 0 or okReplL)
     stPrev   := lvUPrev
     stPrevT  := lvUPrevT
     stArmT   := time
-    stSmtC   := mT + tfMs
     stLType  := lvUType
     stExt    := high
     stStopRef := f_stopRef(stSwing, stSwingT, stLType, false)
@@ -947,7 +896,7 @@ if stStage > 0 and isFlat
             box.set_right(bxF, time)
         // היפוך עכשיו של אחד מה-FVG-ים של התנועה; בנר שבו ה-SMT זוהה — גם היפוך שכבר קרה אחרי השיא/שפל
         // (בלימיט — מותר; בשוק — רק אם ההיפוך בנר שנסגר עכשיו)
-        int ixI = time != stArmT ? f_firstInv(true, false) : f_firstInv(entryMode == ENT_MKT, true)
+        int ixI = time != stArmT ? f_firstInv(true) : f_firstInv(entryMode == ENT_MKT)
         if not na(ixI)
             cTop := stDir == -1 ? array.get(uTop, ixI) : array.get(bTop, ixI)
             cBot := stDir == -1 ? array.get(uBot, ixI) : array.get(bBot, ixI)
@@ -1147,4 +1096,4 @@ if showTbl and barstate.islast
     f_row(tbl, 16, "SMT לונג / שורט", str.tostring(nSmtL) + " / " + str.tostring(nSmtS), color.white)
     f_row(tbl, 17, "עסקאות לונג / שורט", str.tostring(nFillL) + " / " + str.tostring(nFillS), color.lime)
     f_row(tbl, 18, "היום: מנצחות / מפסידות", str.tostring(dWin) + " / " + str.tostring(dLoss), color.white)
-    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v15 · TradersPost" : "IFVG v15", tpOn ? color.lime : color.yellow)
+    f_row(tbl, 19, "גרסת קוד", tpOn ? "IFVG v16 · TradersPost" : "IFVG v16", tpOn ? color.lime : color.yellow)
