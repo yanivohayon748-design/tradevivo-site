@@ -49,6 +49,7 @@ string G11 = "התראות וחיבור TradersPost"
 // ───────────── הגדרות ─────────────
 dirMode  = input.string(DIR_BOTH, "כיוון מסחר", options = [DIR_BOTH, DIR_LONG, DIR_SHORT], group = G1)
 modelTf  = input.timeframe("15", "טיימפריים של ה-SMT", options = ["5", "15"], group = G1)
+exactOn  = input.bool(false, "עיבוד נר ה-IFVG/SMT ברגע הסגירה (גרף דקה = גרף 3 דקות)", group = G1, tooltip = "כבוי (כמו עד גרסה 11): בגרף דקה הנר של 3/15 הדקות מעובד בדקה שאחרי הסגירה — הכניסה מאוחרת בדקה.\nמסומן: הנר מעובד בדיוק בסגירה, כך שגרף דקה וגרף 3 דקות נותנים אותן כניסות.")
 ifvgTf   = input.timeframe("3", "טיימפריים של ה-IFVG", options = ["1", "2", "3", "5"], group = G1, tooltip = "על אילו נרות מחפשים את ה-FVG ואת ההיפוך שלו. הגרף עצמו צריך להיות בטיימפריים הזה או קטן ממנו (מומלץ גרף דקה).")
 
 cmp1On   = input.bool(true, "", inline = "c1", group = G2)
@@ -185,8 +186,10 @@ int  mBarT   = time(modelTf)
 int  mBarC   = time_close(modelTf)
 int  iBarT   = time(ifvgTf)
 int  iBarC   = time_close(ifvgTf)
-bool mExact  = not na(time_close) and time_close == mBarC
-bool iExact  = not na(time_close) and time_close == iBarC
+bool mSame   = timeframe.in_seconds() == timeframe.in_seconds(modelTf)
+bool iSame   = timeframe.in_seconds() == timeframe.in_seconds(ifvgTf)
+bool mExact  = exactOn ? not na(time_close) and time_close == mBarC : mSame
+bool iExact  = exactOn ? not na(time_close) and time_close == iBarC : iSame
 bool mLate   = not mExact and not mExact[1] and not na(mBarT[1]) and mBarT != mBarT[1]
 bool iLate   = not iExact and not iExact[1] and not na(iBarT[1]) and iBarT != iBarT[1]
 
