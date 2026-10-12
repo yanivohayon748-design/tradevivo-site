@@ -187,8 +187,8 @@ int  iBarT   = time(ifvgTf)
 int  iBarC   = time_close(ifvgTf)
 bool mExact  = not na(time_close) and time_close == mBarC
 bool iExact  = not na(time_close) and time_close == iBarC
-bool mLate   = not mExact and not nz(mExact[1]) and not na(mBarT[1]) and mBarT != mBarT[1]
-bool iLate   = not iExact and not nz(iExact[1]) and not na(iBarT[1]) and iBarT != iBarT[1]
+bool mLate   = not mExact and not mExact[1] and not na(mBarT[1]) and mBarT != mBarT[1]
+bool iLate   = not iExact and not iExact[1] and not na(iBarT[1]) and iBarT != iBarT[1]
 
 float mPH   = mExact ? aPH : bPH
 float mPL   = mExact ? aPL : bPL
